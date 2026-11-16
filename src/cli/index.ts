@@ -1,0 +1,84 @@
+#!/usr/bin/env node
+import { createPool } from "../storage/postgres/connection.js";
+import { OpenPayablesStore } from "../storage/postgres/repository.js";
+import type { AwardSize } from "../core/credits.js";
+import type { VoteChoice } from "../core/voting.js";
+
+const HELP = `OpenPayables Checkpoint A — local operator CLI
+  project create <project-id> <name>
+  contributor create <contributor-id> <display-name>
+  project join <project-id> <contributor-id>
+  category add <project-id> <category-code> <description>
+  credit award <project-id> <contributor-id> <category> <small|medium|large> <source> <source-id> <role> <approval-reason>
+  credit reverse <award-uuid> <reason>
+  credit balances <project-id>
+  credit history <project-id>
+  proposal open <project-id> <title> <description>
+  proposal vote <proposal-uuid> <contributor-id> <yes|no|abstain>
+  proposal tally <proposal-uuid>
+  proposal close <proposal-uuid>
+Set OPENPAYABLES_DATABASE_URL to a dedicated development PostgreSQL database.
+Set OPENPAYABLES_OPERATOR_ID for all write commands. Neither is read from host apps.`;
+
+function required(parts: string[], expected: number) {
+  if (parts.length !== expected || parts.some((part) => !part.trim())) throw new Error(`Expected ${expected} arguments.\n${HELP}`);
+}
+
+function operator(): string {
+  const value = process.env.OPENPAYABLES_OPERATOR_ID?.trim();
+  if (!value) throw new Error("Set OPENPAYABLES_OPERATOR_ID before performing write operations");
+  return value;
+}
+
+async function main() {
+  const [group, command, ...args] = process.argv.slice(2);
+  if (!group || group === "help" || group === "--help") {
+    console.log(HELP);
+    return;
+  }
+  const pool = createPool();
+  const store = new OpenPayablesStore(pool);
+  try {
+    let result: unknown;
+    const key = `${group} ${command}`;
+    switch (key) {
+      case "project create":
+        required(args, 2); result = await store.createProject(args[0]!, args[1]!, operator()); break;
+      case "contributor create":
+        required(args, 2); result = await store.createContributor(args[0]!, args[1]!); break;
+      case "project join":
+        required(args, 2); result = await store.joinProject(args[0]!, args[1]!); break;
+      case "category add":
+        required(args, 3); result = await store.addCategory(args[0]!, args[1]!, args[2]!, operator()); break;
+      case "credit award":
+        required(args, 8);
+        result = await store.award({ projectId: args[0]!, contributorId: args[1]!,
+          category: args[2]!, size: args[3]! as AwardSize, source: args[4]!,
+          sourceId: args[5]!, role: args[6]!, reason: args[7]!, approvedBy: operator() });
+        break;
+      case "credit reverse":
+        required(args, 2); result = await store.reverseAward(args[0]!, args[1]!, operator()); break;
+      case "credit balances":
+        required(args, 1); result = await store.balances(args[0]!); break;
+      case "credit history":
+        required(args, 1); result = await store.creditHistory(args[0]!); break;
+      case "proposal open":
+        required(args, 3); result = await store.openProposal(args[0]!, args[1]!, args[2]!, operator()); break;
+      case "proposal vote":
+        required(args, 3); result = await store.castVote(args[0]!, args[1]!, args[2]! as VoteChoice, operator()); break;
+      case "proposal tally":
+        required(args, 1); result = await store.tallyProposal(args[0]!); break;
+      case "proposal close":
+        required(args, 1); result = await store.closeProposal(args[0]!, operator()); break;
+      default: throw new Error(`Unknown command: ${key}\n${HELP}`);
+    }
+    console.log(JSON.stringify(result, null, 2));
+  } finally {
+    await pool.end();
+  }
+}
+
+main().catch((error: unknown) => {
+  console.error(error instanceof Error ? error.message : String(error));
+  process.exitCode = 1;
+});
