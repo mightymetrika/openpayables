@@ -1,8 +1,11 @@
 # OpenPayables — Initial LIVE payment readiness gate v0.1
 
-**Date:** 2026-11-17 (Pacific)  
-**Source checkpoint:** `development` at `f263f46` before C4; C4 operator-owned TEST bindings accepted locally on 2026-11-17, pending commit.  
-**Status:** OPEN / NOT APPROVED. This document does not enable live money movement.  
+**Date:** 2026-11-17 (Pacific)
+
+**Source checkpoint:** `development` at `15cb19c`; C4 operator-owned TEST bindings accepted and pushed on 2026-11-17.
+
+**Status:** OPEN / NOT APPROVED. This document does not enable live money movement.
+
 **Goal:** One controlled payment for genuine contribution work by an eligible recipient, followed by reconciliation of the connected-account transfer **and bank payout**. Keep the first pilot CLI-operated; no frontend, subscriptions or automated third-party collections required.
 
 ## 1. Decide and record the initial funds flow (blocking)

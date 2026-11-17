@@ -2,15 +2,15 @@
 
 A reusable TypeScript/PostgreSQL package for verified open-source contribution credits, contributor voting, and deterministic revenue-sharing **with actual monetary payment capability as the project goal**.
 
-**Status:** Checkpoints A, B, C1, C2 and C3 committed; C4 operator-owned TEST Stripe account binding **locally accepted**, pending commit on `development` (`f263f46` baseline). First Stripe Connect TEST transfer independently verified on 2026-11-17. No live payment capability is enabled. No blindstats or randomplayables databases or applications are modified.
+**Status:** Checkpoints A, B, C1, C2, C3 and C4 locally validated and committed; C4 operator-owned TEST Stripe binding pushed to `development` as `15cb19c`. First Stripe Connect TEST transfer independently verified on 2026-11-17. No live payment capability is enabled. No blindstats or randomplayables databases or applications are modified.
 
-## Operator-owned Stripe model (C4 — locally accepted)
+## Operator-owned Stripe model (C4 — validated and committed)
 
 **OpenPayables is software, not a shared payments intermediary.** Each independent paying business/project operator uses its **own Stripe account and own funds** for its contributors. Mightymetrika's Stripe account is for Mightymetrika's own projects/testing, not for paying other operators' contributors. Recipient onboarding occurs under that operator's Stripe Connect configuration; future OpenPayables SaaS subscription income is entirely separate from customer project funds.
 
 C4 records an immutable, TEST-mode project-to-Stripe account binding (Stripe `acct_...` ID only) and prevents preparation, sending or reconciliation with another account's credentials. Imported verified-test funding automatically binds its authenticated account; attested-only projects require `stripe platform bind <project-id>`. Existing unbound attested projects with historical attempts require manual review, not silent rebinding. **This is still a dedicated local single-operator CLI.** It has no tenant authentication, secure hosted Stripe OAuth/restricted-key workflow or multi-tenant webhook routing; do not run it for unrelated clients from one shared service.
 
-See `docs/OPERATOR_STRIPE_OWNERSHIP_v0.1.md` and `docs/LIVE_PAYMENT_READINESS_v0.1.md` for deployment, approval and real-money requirements. **C4 acceptance (2026-11-17):** migration passed, **9/9 PostgreSQL integration tests**, **29/29 unit tests**, lint and TypeScript build passed; existing verified-funding project backfill showed its expected Stripe TEST account ID. A fake-provider test verified that wrong-platform credentials are rejected before a transfer attempt. C4 has not been committed yet; no live payment capability was added.
+See `docs/OPERATOR_STRIPE_OWNERSHIP_v0.1.md` and `docs/LIVE_PAYMENT_READINESS_v0.1.md` for deployment, approval and real-money requirements. **C4 acceptance (2026-11-17):** migration passed, **9/9 PostgreSQL integration tests**, **29/29 unit tests**, lint and TypeScript build passed; existing verified-funding project backfill showed its expected Stripe TEST account ID. A fake-provider test verified that wrong-platform credentials are rejected before a transfer attempt. C4 was committed and pushed as `15cb19c`; no live payment capability was added.
 
 ## Delivered
 - Contribution credits: project-scoped contributors, configurable categories, manually approved 1/3/8 point events, append-only reversals, deduplication.

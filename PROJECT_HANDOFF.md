@@ -1,10 +1,10 @@
 # OpenPayables — Project Handoff
 
 **Date:** 2026-11-17 (US Pacific)
-**Current version:** Checkpoints A, B, C1, C2 and C3 validated and committed; C4 operator-owned Stripe TEST binding LOCALLY ACCEPTED, pending commit to `development`.
-**Git baseline:** `28a79a4` on `main` (Checkpoint B); `f263f46` on `development` (Checkpoint C3 verified and pushed 2026-11-17).
+**Current version:** Checkpoints A, B, C1, C2, C3, and C4 locally validated; C4 committed and pushed to `development` as `15cb19c`.
+**Git baseline:** `28a79a4` on `main` (Checkpoint B); `15cb19c` on `development` (Checkpoint C4, pushed 2026-11-17).
 **Remote:** https://github.com/mightymetrika/openpayables
-**Working branch:** `development` at `f263f46`, with locally validated but uncommitted C4 changes. Do not change blindstats.
+**Working branch:** `development` at `15cb19c`, clean and synchronized with `origin/development` after C4. Do not change blindstats.
 
 ## Checkpoint A — validated
 
@@ -83,7 +83,7 @@ Validated on Windows 11, Node 24.19.0, PostgreSQL 17 using PowerShell 5.1:
 - C3 committed and pushed to `development` as **`f263f46`**, working tree clean. `main` remains at `28a79a4`.
 
 
-## Checkpoint C4 — operator-owned Stripe boundaries (LOCALLY ACCEPTED; UNCOMMITTED)
+## Checkpoint C4 — operator-owned Stripe boundaries (VALIDATED AND PUSHED)
 
 - **Product decision:** each independent project operator uses its *own* eligible Stripe account, funds and contributor relationships. Mightymetrika's account only pays its own project contributors; OpenPayables is the reusable software, not a central funds processor. Any subscription revenue for the software itself is separate from project funds. Contributor recipients may use Stripe-hosted onboarding under the operator's Connect account.
 - `sql/005_checkpoint_c4.sql` records immutable TEST-mode project/account bindings (no credentials). Existing verified-top-up projects are backfilled; a new imported verified receipt automatically binds its source platform.
@@ -99,11 +99,11 @@ Validated on Windows 11, Node 24.19.0, PostgreSQL 17 using PowerShell 5.1:
 - `npm run test:integration` passed **9/9** tests on the separate `openpayables_test` database; after correcting only an expected-error regex, the account-mismatch tests reject mismatched TEST credentials **before** a transfer attempt.
 - `npm run check` passed **29/29 unit tests**, ESLint and the TypeScript build; `git diff --check` passed. Line-ending warnings were informational.
 - `stripe platform show openpayables-c2-verified-0c89cbaf` returned the existing platform `acct_1Ucqb8PGvHvd36JR`, `mode=test`, `bound_by=c4-verified-receipt-backfill`. This was a read-only local binding lookup, **not** a real payment or independent Stripe API acceptance test.
-- No additional Stripe top-up, transfer, live account connection, or live payment was performed. The C4 changes are **validated locally but not yet committed or pushed**. `main` remains at `28a79a4`.
+- No additional Stripe top-up, transfer, live account connection, or live payment was performed. C4 was committed and pushed to `development` as `15cb19c`; `git status --short` was empty. `main` remains at `28a79a4`.
 
 ## Immediate next action
 
-1. Commit and push the validated C4 files and acceptance documentation on `development` only; verify a clean working tree and keep `main` unchanged pending deliberate release promotion.
+1. Preserve the accepted `15cb19c` C4 source on `development`; clean the three Markdown whitespace lines and stale post-commit metadata in a documentation-only follow-up. Keep `main` unchanged pending deliberate release promotion.
 2. Ask Stripe about the **operator-owned** payer model, permitted funds flow and recipient onboarding, and secure authorization for an eventual hosted SaaS integration. Obtain applicable legal/tax clearance and provider approval before enabling live payments.
 3. After those requirements are understood, implement a strictly isolated LIVE adapter, bank-payout reconciliation, and operational recovery for a small approved pilot. Do not use Mightymetrika as a central payer for third-party projects.
 
