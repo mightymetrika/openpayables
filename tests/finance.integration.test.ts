@@ -83,6 +83,8 @@ suite("Checkpoint B PostgreSQL integration (DEDICATED test DB)", () => {
 
   it("holds unconfigured payees, blocks an unfunded attempt, sends once and never blindly retries", async () => {
     const provider = new FakeStripeTest();
+    await expect(money.prepareObligation(aliceObligation, provider)).rejects.toThrow(/no bound Stripe TEST platform/);
+    await money.bindTestPlatform(project, provider, "operator");
     await expect(money.prepareObligation(aliceObligation, provider)).rejects.toThrow(/no Stripe/);
     await money.setDestination(project, a, "acct_alice123", "operator");
     expect((await money.prepareObligation(aliceObligation, provider)).status).toBe("ready");
@@ -128,6 +130,7 @@ suite("Checkpoint B PostgreSQL integration (DEDICATED test DB)", () => {
     const imported = await money.importTestTopup(verifiedProject, topupId, provider, "operator");
     expect(imported.evidence_kind).toBe("stripe_test_topup");
     expect(imported.stripe_topup_id).toBe(topupId);
+    expect((await money.boundTestPlatform(verifiedProject))?.stripe_platform_account_id).toBe(platformId);
     expect(await money.fundingStatus(verifiedProject)).toMatchObject({
       verifiedTestCents: 1000, attestedCents: 0, remainingCents: 1000,
     });
@@ -147,14 +150,52 @@ suite("Checkpoint B PostgreSQL integration (DEDICATED test DB)", () => {
     const obligation = (await money.showPeriod(period.id)).obligations[0]!;
     await money.setDestination(verifiedProject, a, "acct_verifiedalice", "operator");
     const correct = new FakeStripeTest();
+    correct.platformAccountId = async () => platformId;
     await money.prepareObligation(obligation.id, correct);
     correct.platformAccountId = async () => "acct_different";
-    await expect(money.submitObligation(obligation.id, correct)).rejects.toThrow(/does not match/);
+    await expect(money.submitObligation(obligation.id, correct)).rejects.toThrow(/do not match/);
     expect(correct.sends).toBe(0);
     const noAttempts = await pool.query(
       "SELECT COUNT(*)::INT AS n FROM openpayables.payment_attempts WHERE obligation_id=$1", [obligation.id]);
     expect(noAttempts.rows[0].n).toBe(0);
     expect((await money.getObligation(obligation.id)).status).toBe("ready");
+  });
+
+  it("binds an attested TEST project to its operator's Stripe account and refuses another account", async () => {
+    const isolatedProject = `operator-scope-${suffix}`;
+    await credits.createProject(isolatedProject, "Owner-scoped operator test", "operator");
+    await credits.joinProject(isolatedProject, a);
+    await credits.award({ projectId: isolatedProject, contributorId: a, category: "development",
+      size: "large", source: "github", sourceId: suffix, role: "author",
+      reason: "Accepted", approvedBy: "operator" });
+    await money.addFunding(isolatedProject, 500, `owner-test-${suffix}`, "operator");
+    const period = await money.createPeriod(isolatedProject, `owner-period-${suffix}`, 500, "operator");
+    await money.approvePeriod(period.id, "operator");
+    const obligation = (await money.showPeriod(period.id)).obligations[0]!;
+    await money.setDestination(isolatedProject, a, "acct_ownedrecipient", "operator");
+    const correct = new FakeStripeTest();
+    const ownerAccount = `acct_owner${suffix.replace(/-/g, "")}`;
+    correct.platformAccountId = async () => ownerAccount;
+    const different = new FakeStripeTest();
+    different.platformAccountId = async () => `acct_unrelated${suffix.replace(/-/g, "")}`;
+    await expect(money.prepareObligation(obligation.id, correct)).rejects.toThrow(/no bound Stripe TEST platform/);
+    const binding = await money.bindTestPlatform(isolatedProject, correct, "operator");
+    expect(binding.stripe_platform_account_id).toBe(ownerAccount);
+    expect((await money.boundTestPlatform(isolatedProject))?.stripe_platform_account_id).toBe(ownerAccount);
+    expect((await money.bindTestPlatform(isolatedProject, correct, "operator")).stripe_platform_account_id).toBe(ownerAccount);
+    await expect(money.bindTestPlatform(isolatedProject, different, "operator")).rejects.toThrow(/rebinding refused/);
+    await expect(money.prepareObligation(obligation.id, different)).rejects.toThrow(/do not match/);
+    expect((await money.prepareObligation(obligation.id, correct)).status).toBe("ready");
+    await expect(money.submitObligation(obligation.id, different)).rejects.toThrow(/do not match/);
+    const attempts = await pool.query(
+      "SELECT COUNT(*)::INT AS n FROM openpayables.payment_attempts WHERE obligation_id=$1", [obligation.id]);
+    expect(attempts.rows[0].n).toBe(0);
+    expect(different.sends).toBe(0);
+    expect((await money.getObligation(obligation.id)).status).toBe("ready");
+    expect((await money.submitObligation(obligation.id, correct)).status).toBe("transferred");
+    await expect(money.reconcileObligation(obligation.id, different)).rejects.toThrow(/do not match/);
+    expect((await money.reconcileObligation(obligation.id, correct)).status).toBe("transferred");
+    expect(correct.sends).toBe(1);
   });
 
   it("holds reversed TEST receipts and blocks a platform shortfall without payment attempts", async () => {
@@ -217,8 +258,8 @@ suite("Checkpoint B PostgreSQL integration (DEDICATED test DB)", () => {
     const secondObligation = (await money.showPeriod(secondPeriod.id)).obligations[0]!;
     await money.setDestination(second, a, "acct_c3recipient", "operator");
     const sender = new FakeStripeTest();
-    await money.prepareObligation(secondObligation.id, sender);
     sender.platformAccountId = async () => platformId;
+    await money.prepareObligation(secondObligation.id, sender);
     sender.inspectTestTopup = provider.inspectTestTopup;
     sender.availableCents = 400; // platform has at least 500 cents outstanding
     await expect(money.submitObligation(secondObligation.id, sender))

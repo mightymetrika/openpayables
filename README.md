@@ -2,7 +2,15 @@
 
 A reusable TypeScript/PostgreSQL package for verified open-source contribution credits, contributor voting, and deterministic revenue-sharing **with actual monetary payment capability as the project goal**.
 
-**Status:** Checkpoints A and B accepted; C1/C2 committed to `development` at `170e999`; C3 TEST receipt-reversal/shared-platform safeguards locally validated on 2026-11-17 (commit pending). First Stripe Connect TEST transfer independently verified on 2026-11-17. No live payment capability is enabled. No blindstats or randomplayables databases or applications are modified.
+**Status:** Checkpoints A, B, C1, C2 and C3 committed; C4 operator-owned TEST Stripe account binding **locally accepted**, pending commit on `development` (`f263f46` baseline). First Stripe Connect TEST transfer independently verified on 2026-11-17. No live payment capability is enabled. No blindstats or randomplayables databases or applications are modified.
+
+## Operator-owned Stripe model (C4 — locally accepted)
+
+**OpenPayables is software, not a shared payments intermediary.** Each independent paying business/project operator uses its **own Stripe account and own funds** for its contributors. Mightymetrika's Stripe account is for Mightymetrika's own projects/testing, not for paying other operators' contributors. Recipient onboarding occurs under that operator's Stripe Connect configuration; future OpenPayables SaaS subscription income is entirely separate from customer project funds.
+
+C4 records an immutable, TEST-mode project-to-Stripe account binding (Stripe `acct_...` ID only) and prevents preparation, sending or reconciliation with another account's credentials. Imported verified-test funding automatically binds its authenticated account; attested-only projects require `stripe platform bind <project-id>`. Existing unbound attested projects with historical attempts require manual review, not silent rebinding. **This is still a dedicated local single-operator CLI.** It has no tenant authentication, secure hosted Stripe OAuth/restricted-key workflow or multi-tenant webhook routing; do not run it for unrelated clients from one shared service.
+
+See `docs/OPERATOR_STRIPE_OWNERSHIP_v0.1.md` and `docs/LIVE_PAYMENT_READINESS_v0.1.md` for deployment, approval and real-money requirements. **C4 acceptance (2026-11-17):** migration passed, **9/9 PostgreSQL integration tests**, **29/29 unit tests**, lint and TypeScript build passed; existing verified-funding project backfill showed its expected Stripe TEST account ID. A fake-provider test verified that wrong-platform credentials are rejected before a transfer attempt. C4 has not been committed yet; no live payment capability was added.
 
 ## Delivered
 - Contribution credits: project-scoped contributors, configurable categories, manually approved 1/3/8 point events, append-only reversals, deduplication.
@@ -86,6 +94,9 @@ Use only a test secret beginning `sk_test_`. Keep the key private (PowerShell se
 
 ```powershell
 # Supply the Stripe TEST key privately in the local environment before running the CLI.
+# Bind this particular project to the authenticated operator's Stripe TEST account first:
+npm run cli -- stripe platform bind my-project
+npm run cli -- stripe platform show my-project
 # Create a test Express account and assign it to a project contributor:
 npm run cli -- stripe account create my-project alice recipient@example.test
 # Use returned acct_... identifier:
@@ -126,10 +137,10 @@ C3 adds a read-only `fund recheck <project-id>` command and an **immutable** aud
 
 For projects funded by verified TEST receipts, approval and send automatically check provider receipts. New allocations must fit both project funding and total verified funds **not already committed across the same Stripe platform**. Before sending, OpenPayables checks that the platform can cover all outstanding verified-project obligations and serializes its own concurrent sends. Legacy operator-attested projects remain outside this attribution. External Stripe activity can still change available funds, and this is not proof of unspent app revenue or bank settlement.
 
-**C3 local acceptance (2026-11-17):** Following fixes for integration-test fixture isolation and lock-cleanup lint, the development migration succeeded; **8 PostgreSQL integration tests**, **29 unit tests**, ESLint and TypeScript build passed. The existing Stripe TEST project `openpayables-c2-verified-0c89cbaf` was rechecked against platform `acct_1Ucqb8PGvHvd36JR`: one receipt checked, zero new problems and zero blocked receipts. Its funding remained 500 verified TEST cents, 0 blocked, 0 reserved, 500 remaining. No additional Stripe top-up or transfer was made. The receipt-reversal scenarios were exercised with test doubles, not a deliberately reversed live Stripe sandbox receipt. C3 acceptance documentation is ready to commit to `development`; **live keys remain prohibited**.
+**C3 local acceptance (2026-11-17):** Following fixes for integration-test fixture isolation and lock-cleanup lint, the development migration succeeded; **8 PostgreSQL integration tests**, **29 unit tests**, ESLint and TypeScript build passed. The existing Stripe TEST project `openpayables-c2-verified-0c89cbaf` was rechecked against platform `acct_1Ucqb8PGvHvd36JR`: one receipt checked, zero new problems and zero blocked receipts. Its funding remained 500 verified TEST cents, 0 blocked, 0 reserved, 500 remaining. No additional Stripe top-up or transfer was made. The receipt-reversal scenarios were exercised with test doubles, not a deliberately reversed live Stripe sandbox receipt. C3 was committed to `development` as `f263f46`; **live keys remain prohibited**.
 
 ## Boundaries and continuity
 
-The CLI is a trusted **local operator tool**, not an authenticated public API. No Stripe test transfer can be attempted without a Stripe TEST credential, an enabled connected account, an approved and funded distribution period, and explicit operator execution. Financial data is stored in the `openpayables` PostgreSQL schema; no Supabase, Prisma, Clerk or Next.js coupling.
+The CLI is a trusted **single-operator local tool**, not an authenticated public API or a multi-tenant hosted service. No Stripe test transfer can be attempted without a Stripe TEST credential, an enabled connected account, an approved and funded distribution period, and explicit operator execution. Financial data is stored in the `openpayables` PostgreSQL schema; no Supabase, Prisma, Clerk or Next.js coupling.
 
 Use `PROJECT_HANDOFF.md` for the current checkpoint. See `docs/MVP_SPEC_v0.1.md` for the MVP policy. The first reconciled Stripe TEST transfer has now been demonstrated. The next implementation milestone is to make real-money settlement safe and compliant before enabling live payments; this does not justify prematurely adding a frontend, tax service, GitHub scraper, or blindstats integration.

@@ -6,7 +6,7 @@ import type { VoteChoice } from "../core/voting.js";
 import { OpenPayablesFinance } from "../storage/postgres/finance.js";
 import { StripeTestClient } from "../payments/stripe/test-client.js";
 
-const HELP = `OpenPayables Checkpoint C3 — local operator CLI
+const HELP = `OpenPayables Checkpoint C4 — one operator-owned Stripe TEST platform per project
   project create <project-id> <name>
   contributor create <contributor-id> <display-name>
   project join <project-id> <contributor-id>
@@ -29,6 +29,8 @@ const HELP = `OpenPayables Checkpoint C3 — local operator CLI
   stripe account create <project-id> <contributor-id> <email>
   stripe onboarding link <stripe-account-id> <refresh-url> <return-url>
   stripe balance                                            (TEST platform available USD cents)
+  stripe platform bind <project-id>                         (TEST, verified /account, immutable binding)
+  stripe platform show <project-id>                         (read-only; no credentials shown)
   payment destination <project-id> <contributor-id> <stripe-acct-id>
   payment prepare <obligation-uuid>
   payment send <obligation-uuid>                       (Stripe TEST mode only)
@@ -109,6 +111,12 @@ async function main() {
         required(args, 1); result = await finance.showPeriod(args[0]!); break;
       case "stripe balance":
         required(args, 0); result = { currency: "usd", availableCents: await new StripeTestClient().availableBalanceCents("usd") }; break;
+      case "stripe platform":
+        required(args, 2);
+        if (args[0] === "bind") result = await finance.bindTestPlatform(args[1]!, new StripeTestClient(), operator());
+        else if (args[0] === "show") result = await finance.boundTestPlatform(args[1]!);
+        else throw new Error(HELP);
+        break;
       case "payment destination":
         required(args, 3); result = await finance.setDestination(args[0]!, args[1]!, args[2]!, operator()); break;
       case "payment prepare":
@@ -124,6 +132,7 @@ async function main() {
         required(args, 4); operator();
         {
           const stripe = new StripeTestClient();
+          await finance.assertTestPlatform(args[1]!, stripe);
           const account = await stripe.createExpressAccount(args[3]!);
           await finance.setDestination(args[1]!, args[2]!, account.id, operator());
           result = { accountId: account.id, projectId: args[1], contributorId: args[2] };

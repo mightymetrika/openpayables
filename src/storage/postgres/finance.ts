@@ -91,6 +91,11 @@ export class OpenPayablesFinance {
       if (existing.rows.some((x) => x.stripe_platform_account_id !== receipt.platformAccountId)) {
         throw new Error("Cannot mix Stripe platforms within one project's verified TEST funding");
       }
+      const binding = await db.query(
+        "SELECT stripe_platform_account_id FROM openpayables.project_payment_platforms WHERE project_id=$1", [projectId]);
+      if (binding.rowCount && binding.rows[0].stripe_platform_account_id !== receipt.platformAccountId) {
+        throw new Error("Current Stripe TEST platform does not match the project's bound payment account");
+      }
       const result = await db.query(
         `INSERT INTO openpayables.funding_events
           (id,project_id,amount_cents,source_reference,attested_by,evidence_kind,
@@ -103,8 +108,78 @@ export class OpenPayablesFinance {
           operator, receipt.platformAccountId, topupId, receipt.balanceTransactionId],
       );
       if (result.rowCount !== 1) throw new Error("Stripe TEST top-up already attributed; duplicate funding refused");
+      // An imported verified receipt establishes the project's TEST payer account.
+      if (!binding.rowCount) {
+        await db.query(
+          `INSERT INTO openpayables.project_payment_platforms
+             (project_id,stripe_platform_account_id,bound_by) VALUES ($1,$2,$3)`,
+          [projectId, receipt.platformAccountId, operator],
+        );
+      }
       return result.rows[0];
     });
+  }
+
+  /** Bind the current operator-owned Stripe TEST account, not a contributor's account. */
+  async bindTestPlatform(projectId: string, provider: Pick<PaymentProvider, "platformAccountId">, operator: string) {
+    projectId = nonblank(projectId, "project");
+    operator = nonblank(operator, "operator");
+    const platform = await provider.platformAccountId();
+    if (!/^acct_[A-Za-z0-9]+$/.test(platform)) throw new Error("Invalid authenticated Stripe platform ID");
+    return this.transaction(async (db) => {
+      const project = await db.query("SELECT id FROM openpayables.projects WHERE id=$1 FOR UPDATE", [projectId]);
+      if (project.rowCount !== 1) throw new Error("Project not found");
+      const binding = await db.query(
+        "SELECT project_id,stripe_platform_account_id,mode,bound_by,bound_at FROM openpayables.project_payment_platforms WHERE project_id=$1", [projectId]);
+      if (binding.rowCount) {
+        if (binding.rows[0].stripe_platform_account_id !== platform) {
+          throw new Error("Project already bound to a different Stripe TEST platform; rebinding refused");
+        }
+        return binding.rows[0];
+      }
+      const receipts = await db.query(
+        "SELECT DISTINCT stripe_platform_account_id FROM openpayables.funding_events WHERE project_id=$1 AND evidence_kind='stripe_test_topup'", [projectId]);
+      if (receipts.rows.some((x) => x.stripe_platform_account_id !== platform)) {
+        throw new Error("Project funding receipts belong to a different Stripe TEST platform");
+      }
+      // Legacy TEST transfer history without source-platform evidence cannot
+      // be safely attached to a new payment account by a simple CLI command.
+      const attempted = await db.query(
+        `SELECT 1 FROM openpayables.payment_attempts a
+         JOIN openpayables.distribution_obligations o ON o.id=a.obligation_id
+         WHERE o.project_id=$1 LIMIT 1`, [projectId]);
+      if (attempted.rowCount) {
+        throw new Error("Unbound legacy project has payment attempts; verify history before binding a Stripe platform");
+      }
+      const inserted = await db.query(
+        `INSERT INTO openpayables.project_payment_platforms
+           (project_id,stripe_platform_account_id,bound_by)
+         VALUES($1,$2,$3)
+         RETURNING project_id,stripe_platform_account_id,mode,bound_by,bound_at`,
+        [projectId, platform, operator],
+      );
+      return inserted.rows[0];
+    });
+  }
+
+  /** Public Stripe account ID is safe to display; credentials are never persisted. */
+  async boundTestPlatform(projectId: string) {
+    const result = await this.pool.query(
+      "SELECT project_id,stripe_platform_account_id,mode,bound_by,bound_at FROM openpayables.project_payment_platforms WHERE project_id=$1",
+      [nonblank(projectId, "project")],
+    );
+    return result.rows[0] ?? null;
+  }
+
+  /** Fail before provider-side work when a project is unbound or uses another key. */
+  async assertTestPlatform(projectId: string, provider: Pick<PaymentProvider, "platformAccountId">): Promise<string> {
+    const bound = await this.boundTestPlatform(projectId);
+    if (!bound) throw new Error("Project has no bound Stripe TEST platform; run stripe platform bind first");
+    const actual = await provider.platformAccountId();
+    if (bound.stripe_platform_account_id !== actual) {
+      throw new Error("Stripe TEST credentials do not match this project's bound payment account");
+    }
+    return actual;
   }
 
   /** TEST funding is bound to one authenticated Stripe platform per project. */
@@ -410,6 +485,7 @@ export class OpenPayablesFinance {
   async prepareObligation(id: string, provider: PaymentProvider): Promise<Obligation> {
     const obligation = await this.getObligation(id);
     if (obligation.status !== "held") throw new Error("Only held obligations may be prepared");
+    await this.assertTestPlatform(obligation.projectId, provider);
     const destination = await this.pool.query(
       "SELECT stripe_account_id FROM openpayables.payment_destinations WHERE project_id=$1 AND contributor_id=$2",
       [obligation.projectId, obligation.contributorId],
@@ -442,6 +518,7 @@ export class OpenPayablesFinance {
     if (pending.status !== "ready" || !pending.connectedAccountId) {
       throw new Error(`Not sendable (status=${pending.status}); no retry after uncertain payment`);
     }
+    await this.assertTestPlatform(pending.projectId, provider);
     const platform = await this.verifiedPlatformForProject(pending.projectId);
     if (!platform) return this.sendAfterPreflight(id, provider, pending.amountCents);
     if ((await provider.platformAccountId()) !== platform) {
@@ -538,6 +615,7 @@ export class OpenPayablesFinance {
 
   async reconcileObligation(id: string, provider: PaymentProvider): Promise<Obligation> {
     const o = await this.getObligation(id);
+    await this.assertTestPlatform(o.projectId, provider);
     if (!["submitting", "unknown", "transferred", "reversal_review", "reversed"].includes(o.status)) {
       throw new Error("Obligation has not been submitted");
     }
