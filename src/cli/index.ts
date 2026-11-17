@@ -6,7 +6,7 @@ import type { VoteChoice } from "../core/voting.js";
 import { OpenPayablesFinance } from "../storage/postgres/finance.js";
 import { StripeTestClient } from "../payments/stripe/test-client.js";
 
-const HELP = `OpenPayables Checkpoint C1 — local operator CLI
+const HELP = `OpenPayables Checkpoint C2 — local operator CLI
   project create <project-id> <name>
   contributor create <contributor-id> <display-name>
   project join <project-id> <contributor-id>
@@ -20,6 +20,7 @@ const HELP = `OpenPayables Checkpoint C1 — local operator CLI
   proposal tally <proposal-uuid>
   proposal close <proposal-uuid>
   fund add <project-id> <cents> <funding-reference>    (TEST attestation only)
+  fund import-topup <project-id> <stripe-tu-id>         (TEST Stripe receipt; no top-up created)
   fund status <project-id>
   distribution create <project-id> <period-label> <cents>
   distribution approve <period-uuid>
@@ -88,6 +89,10 @@ async function main() {
         required(args, 1); result = await store.closeProposal(args[0]!, operator()); break;
       case "fund add":
         required(args, 3); result = await finance.addFunding(args[0]!, Number(args[1]), args[2]!, operator()); break;
+      case "fund import-topup":
+        required(args, 2);
+        result = await finance.importTestTopup(args[0]!, args[1]!, new StripeTestClient(), operator());
+        break;
       case "fund status":
         required(args, 1); result = await finance.fundingStatus(args[0]!); break;
       case "distribution create":

@@ -1,10 +1,10 @@
 # OpenPayables — Project Handoff
 
 **Date:** 2026-11-17 (US Pacific)
-**Current version:** Checkpoint B v0.2 ACCEPTED AND PROMOTED; Checkpoint C1 test-mode liquidity preflight patch prepared (not yet applied/validated).
-**Git baseline:** `28a79a4` on both `main` and `development` (Checkpoint B acceptance, pushed 2026-11-17).
+**Current version:** Checkpoint B ACCEPTED on `main`; Checkpoint C1 COMMITTED at `23a24ce` on `development`; Checkpoint C2 Stripe TEST funding receipt import LOCALLY VALIDATED and sandbox acceptance PASSED (not yet committed).
+**Git baseline:** `28a79a4` on `main` (Checkpoint B accepted); `23a24ce` on `development` (Checkpoint C1 verified, pushed 2026-11-17).
 **Remote:** https://github.com/mightymetrika/openpayables
-**Working branch:** `development`, clean after acceptance checks. Do not change blindstats.
+**Working branch:** `development` at `23a24ce`, with uncommitted C2 changes ready for final documentation update and Git checkpoint. Do not change blindstats.
 
 ## Checkpoint A — validated
 
@@ -38,7 +38,7 @@ Validated on Windows 11, Node 24.19.0, PostgreSQL 17 using PowerShell 5.1:
 
 **Financial boundary:** `fund add` is operator-attested **test funding**, not validation of externally received cash. `transferred` confirms a Stripe Connect transfer into the connected Stripe account, **not** a bank payout. No live keys accepted; no production settlement or legal/tax approval implied. Unknown payment outcomes must not be automatically resent.
 
-## Checkpoint C1 — TEST-mode liquidity preflight (patch awaiting local validation)
+## Checkpoint C1 — TEST-mode liquidity preflight (VALIDATED, COMMITTED)
 
 - The `payment send` path first queries the authenticated Stripe TEST platform's **available USD balance**, before creating an immutable payment attempt. Insufficient funds or a failed balance query leave an already `ready` obligation untouched and create zero attempts.
 - `stripe balance` is an explicit read-only operator CLI command, returning USD available cents (no key output).
@@ -46,12 +46,30 @@ Validated on Windows 11, Node 24.19.0, PostgreSQL 17 using PowerShell 5.1:
 - The `payment send` preflight is deliberately **not an atomic provider balance reservation**. Concurrent transfers and external Stripe activity may still change availability; a subsequent ambiguous transfer error remains `unknown` and cannot be blindly retried.
 - **Crucial financial boundary:** The Stripe platform balance aggregates funds; its availability does not prove that a given project received or owns revenue, nor that funds are free from other commitments. `fund add` remains operator-attested TEST funding. This step does not enable live payments or bank-payout tracking.
 - New unit tests exercise available-versus-pending balances, test-mode rejection and malformed balances. An expanded PostgreSQL finance integration test asserts zero payment attempts when balance is insufficient.
+- On Windows PowerShell 5.1, `npm run check`: **18 unit tests**, clean ESLint and build; `npm run test:integration`: **6 PostgreSQL tests**. C1 committed and pushed to `development` as `23a24ce`; working tree clean. `main` deliberately remains at `28a79a4`.
+
+## Checkpoint C2 — Stripe TEST top-up source attribution (VALIDATED, NOT YET COMMITTED)
+
+- New migration `sql/003_checkpoint_c2.sql`: each TEST funding event identifies either an existing operator attestation or a provider-verified TEST receipt. Stripe account + top-up ID can be attributed to only **one** project. Historical attestations remain intact.
+- `fund import-topup <project-id> <tu_...>` reads a previously created Stripe TEST top-up and validates ID, `livemode=false`, `status=succeeded`, USD, positive integer cents, Stripe balance transaction and authenticated platform account ID. This command **does not create top-ups or move money**.
+- One project cannot mix operator-attested TEST funds with provider-verified top-ups, nor mix Stripe test platforms. Project locks serialize funding additions, imports and distribution approvals; existing reservation rules still apply.
+- `fund status` reports attested and verified TEST amounts independently; `payment send` from a verified-funded project also checks that its Stripe account identity matches the project's receipt source before reserving an attempt. Existing Stripe TEST balance preflight still runs.
+- Unit and integration test cases cover valid/invalid evidence, duplicate receipt rejection across projects, no mixed funding, reserved-pool limits and wrong-platform payment rejection.
+
+### Acceptance evidence — 2026-11-17
+
+- C2 migration succeeded in the dedicated development PostgreSQL database; `npm run test:integration` passed **7/7** tests against a separate test database. `npm run check` passed **27/27 unit tests**, ESLint and the TypeScript build after a one-line `rowCount` nullability correction. `git diff --check` passed.
+- The isolated Stripe TEST platform returned a **succeeded $5.00 top-up** (`tu_1UcuKEPGvHvd36JRmBSy8HJf`) with USD balance transaction `txn_1UcuLDPGvHvd36JRV9ucVdpS`; `livemode = false`.
+- `fund import-topup` attributed that receipt to the newly created project `openpayables-c2-verified-0c89cbaf`. `fund status` confirmed **0 attested, 500 verified TEST, 0 reserved, 500 remaining cents**.
+- A second project (`openpayables-c2-duplicate-a525d7ae`) tried importing the **same** top-up. The CLI rejected it with `Stripe TEST top-up already attributed; duplicate funding refused` and a nonzero exit code. The first project retained 500 verified cents and the second remained at zero.
+- The acceptance tests did **not** create any Stripe transfers or live payments and did not rerun Alice's completed Checkpoint B transfer.
+
+**Limitations:** A provider-confirmed top-up shows a test funding event, **not** the app's actual subscription revenue, funds beneficially owned by the named OpenPayables project, or cash free of other platform liabilities. A top-up could be reversed or used elsewhere later. Later work must recheck/reconcile evidence and reservations across projects and assess provider/legal/tax requirements. Stripe LIVE keys and bank-payout features remain disabled.
 
 ## Immediate next action — preserve momentum
 
-1. On clean `development` at `28a79a4`, apply the Checkpoint C1 path-preserving patch, then run `npm run test:integration` against the *separate* `openpayables_test` database and `npm run check`.
-2. Run `npm run cli -- stripe balance` with the sandbox test key; confirm a read-only available balance without creating any payment attempt. Leave the already-transferred Alice obligation alone.
-3. If validated, commit/push on `development`. Keep `main` at the accepted Checkpoint B baseline until the Checkpoint C gate is tested and ready for promotion.
-4. Later Checkpoint C work must establish project-specific receipt/reconciliation, risk reserves, clear authorization, provider approval and contributor classification/tax/jurisdiction checks before a controlled live-money transfer. No live provider is implemented yet.
+1. Apply the path-preserving **C2 acceptance documentation-only** patch (this file and `README.md`) on `development` at `23a24ce`, preserving the already validated C2 source/migration/test changes.
+2. Stage the ten C2 files (`PROJECT_HANDOFF.md`, `README.md`, `sql/003_checkpoint_c2.sql`, and seven TypeScript source/test files); `git diff --cached --check`; commit and push **`development` only**. Keep `main` on Checkpoint B `28a79a4`.
+3. Proceed to the next narrow Checkpoint C slice: test receipt reversals/changes and reconcile project-level reservations against funds already committed across the Stripe platform. Do **not** assume a verified top-up is unspent or enable live payments without provider/legal/tax clearance.
 
-Local operator databases: `127.0.0.1:5432/openpayables` (development) and `127.0.0.1:5432/openpayables_test` (dedicated test). Configure all secrets only via PowerShell environment variables or ignored local configuration. Never commit Stripe secrets, real database credentials or onboarding links. The CLI remains a trusted local operator tool, not an authenticated multi-user API.
+Local operator databases: `127.0.0.1:5432/openpayables` (development) and `127.0.0.1:5432/openpayables_test` (dedicated test). Configure secrets via PowerShell environment variables or ignored local files. Never commit Stripe secrets, actual DB passwords or onboarding links. The CLI is a trusted local operator tool, not an authenticated public API. Do not modify blindstats or randomplayables apps or databases.

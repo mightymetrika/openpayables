@@ -1,9 +1,9 @@
 /** Stripe REST adapter: hard-locked to test API keys. No live transfer path. */
-import type { PaymentProvider, ProviderTransfer, TransferInstruction } from "../provider.js";
+import type { PaymentProvider, ProviderTransfer, TransferInstruction, TestFundingProvider, TestTopupReceipt } from "../provider.js";
 
 const BASE = "https://api.stripe.com/v1";
 
-export class StripeTestClient implements PaymentProvider {
+export class StripeTestClient implements PaymentProvider, TestFundingProvider {
   constructor(private readonly secret = process.env.OPENPAYABLES_STRIPE_TEST_SECRET_KEY) {
     if (!secret?.startsWith("sk_test_")) throw new Error("Stripe TEST secret key (sk_test_...) required; live keys are forbidden");
   }
@@ -44,6 +44,37 @@ export class StripeTestClient implements PaymentProvider {
     const cents = matches.reduce((sum, entry) => sum + entry.amount, 0);
     if (!Number.isSafeInteger(cents)) throw new Error("Stripe available balance exceeds safe integer range");
     return cents;
+  }
+
+  /** This identifies the TEST platform that owns both funding receipts and transfers. */
+  async platformAccountId(): Promise<string> {
+    const account = await this.request<{ id: unknown }>("GET", "/account");
+    if (typeof account.id !== "string" || !/^acct_[A-Za-z0-9]+$/.test(account.id)) {
+      throw new Error("Stripe TEST platform identity could not be verified");
+    }
+    return account.id;
+  }
+
+  /** Read-only verification; this does NOT create a top-up or claim project ownership. */
+  async verifyTestTopup(topupId: string): Promise<TestTopupReceipt> {
+    if (!/^tu_[A-Za-z0-9]+$/.test(topupId)) throw new Error("Invalid Stripe test top-up ID");
+    const topup = await this.request<{
+      id: unknown; object: unknown; amount: unknown; currency: unknown;
+      status: unknown; livemode: unknown; balance_transaction: unknown;
+    }>("GET", `/topups/${topupId}`);
+    if (topup.id !== topupId || topup.object !== "topup" ||
+        topup.status !== "succeeded" || topup.livemode !== false ||
+        topup.currency !== "usd" || typeof topup.amount !== "number" ||
+        !Number.isSafeInteger(topup.amount) || topup.amount <= 0 ||
+        typeof topup.balance_transaction !== "string" ||
+        !/^txn_[A-Za-z0-9]+$/.test(topup.balance_transaction)) {
+      throw new Error("Stripe receipt is not a succeeded USD TEST top-up with balance evidence");
+    }
+    const platformAccountId = await this.platformAccountId();
+    return {
+      topupId, platformAccountId, balanceTransactionId: topup.balance_transaction,
+      amountCents: topup.amount, currency: "usd",
+    };
   }
 
   async accountReady(accountId: string): Promise<boolean> {

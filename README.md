@@ -2,17 +2,17 @@
 
 A reusable TypeScript/PostgreSQL package for verified open-source contribution credits, contributor voting, and deterministic revenue-sharing **with actual monetary payment capability as the project goal**.
 
-**Status:** Checkpoint A and Checkpoint B v0.2 validated locally on Windows/PostgreSQL. The first end-to-end Stripe Connect **TEST-mode** transfer was independently verified on 2026-11-17. No live payment capability is enabled. No blindstats or randomplayables databases or applications are modified.
+**Status:** Checkpoint A and B accepted; C1 validated and pushed on `development` at `23a24ce`; C2 Stripe TEST funding-receipt attribution and duplicate-import rejection validated locally on 2026-11-17 (pending commit on `development`). First Stripe Connect TEST transfer independently verified on 2026-11-17. No live payment capability is enabled. No blindstats or randomplayables databases or applications are modified.
 
 ## Delivered
 - Contribution credits: project-scoped contributors, configurable categories, manually approved 1/3/8 point events, append-only reversals, deduplication.
 - Governance: immutable weighted ballots with voting weights frozen when a proposal opens.
 - Deterministic distribution: integer-cent allocation with largest-remainder rounding, locked point snapshots, no credit consumption.
-- TEST funding: operator-attested, project-specific funding events; reservation checks prevent two periods from spending the same attested pool.
+- TEST funding: project-specific operator attestations (legacy) or separately verified Stripe TEST top-up receipts; never mixed within a project. Provider top-up evidence is uniquely assigned to one project; reservation checks prevent overspending project records.
 - Monetary obligations: paid or held per recipient, independently of other contributors; duplicate sends blocked.
 - Stripe Connect TEST adapter: Express onboarding, account readiness, transfers, status reconciliation, transfer-reversal detection, verified webhook receipt, no live keys.
 
-**Financial limits:** TEST funding is an **operator attestation**, not verified money in a real bank/Stripe account. Test Stripe transfers separately require available simulated funds in the Stripe platform balance. Stripe Connect `transferred` means funds moved to a connected Stripe account, **not** a confirmed bank payout. No unrestricted live payout path exists; live settlement and compliance require further work.
+**Financial limits:** `fund add` is **operator-attested TEST funding** and never verifies external money. `fund import-topup` instead reads a **succeeded, USD, TEST-mode top-up with a Stripe balance transaction**, and uniquely attributes that gross test receipt to one project by an operator decision. This does **not** prove subscription revenue, project ownership of funds, or funds currently free from spending/reserves; receipt reversal may occur later. `payment send` still requires an available Stripe TEST balance at send time. Stripe Connect `transferred` means funds moved to a connected Stripe account, **not** a bank payout. No unrestricted live payment path exists.
 
 ## Checkpoint B sandbox acceptance — passed 2026-11-17
 - An isolated OpenPayables Development Stripe sandbox was used; `livemode` was `false`.
@@ -23,6 +23,18 @@ A reusable TypeScript/PostgreSQL package for verified open-source contribution c
 - A dedicated test PostgreSQL database passed **6/6 integration tests**. `npm run check` passed **15/15 unit tests**, ESLint and the TypeScript build. The six integration cases skipped in `npm run check` were run and passed separately. The `development` working tree was clean.
 
 This is an end-to-end **simulated-money Stripe transfer**, not proof of a bank payout, production readiness, or legal/compliance approval for live revenue sharing.
+
+## Checkpoint C1 / C2 — TEST funding verification
+
+- C1 (validated at `23a24ce`): `stripe balance` reads available USD from the authenticated sandbox; `payment send` checks this before recording an attempt. The preflight is not an atomic balance reservation.
+- C2 (validated 2026-11-17): `fund import-topup <project-id> <tu_...>` reads a **previously created** Stripe TEST top-up; it never creates a top-up. Only succeeded USD TEST receipts with a balance transaction are accepted. The operator attributes the receipt to a single OpenPayables project.
+- Migration `003_checkpoint_c2` extends `funding_events` with evidence type, Stripe platform ID, top-up ID and balance transaction ID. A unique index prevents importing the same provider receipt for multiple projects. Projects cannot mix `fund add` attestations and imported receipts, or receipts from different platforms.
+- `fund status` now separately reports `attestedCents` and `verifiedTestCents` alongside reserved/remaining cents. Approved distributions cannot exceed the project's recorded funding. When sending an obligation from an imported-receipt project, the payment adapter verifies that the key belongs to that same Stripe test platform.
+- Existing Checkpoint B demo projects retain their attested funding; they cannot convert it into verified funding by importing the platform's old test top-up. Use a **new project** with a distinct test receipt to exercise C2.
+
+**C2 acceptance (2026-11-17):** A distinct succeeded **$5.00 Stripe TEST top-up** with a balance transaction was imported into `openpayables-c2-verified-0c89cbaf`; funding status showed 500 verified TEST cents and 0 attested/reserved. Importing that same receipt into `openpayables-c2-duplicate-a525d7ae` was rejected explicitly, and neither project's balances changed incorrectly. The C2 migration, **7 integration tests**, **27 unit tests**, ESLint and TypeScript build passed on Windows/PostgreSQL 17. No new transfers or live payments were made during C2 acceptance.
+
+**C2 is not a live settlement system.** Stripe top-ups are gross provider receipts and not proof of an app's subscription revenues, beneficial ownership, net distributable revenue, or unspent cash. Later work must handle changes/reversals, reconciliation against liabilities and reserves across projects, provider approval and applicable tax/compliance obligations before any live money is enabled.
 
 ## Install and validate — Windows PowerShell 5.1
 
@@ -59,7 +71,7 @@ npm run cli -- proposal open my-project "Next priority?" "Advisory governance vo
 # Use returned proposal UUID:
 npm run cli -- proposal vote PROPOSAL_UUID alice yes
 npm run cli -- proposal tally PROPOSAL_UUID
-# Money entries are operator attestations for LOCAL TEST only:
+# Existing TEST-attested funding path (do not mix with verified receipts in one project):
 npm run cli -- fund add my-project 1100 "pilot-test-001"
 npm run cli -- fund status my-project
 npm run cli -- distribution create my-project "pilot-week-1" 1100
@@ -86,6 +98,11 @@ npm run cli -- payment reconcile OBLIGATION_UUID
 npm run cli -- payment history OBLIGATION_UUID
 # Read-only balance preflight for the authenticated Stripe TEST platform:
 npm run cli -- stripe balance
+# Alternative funding path for a NEW project with no attested funding:
+# Reuse a previously created, succeeded Stripe TEST top-up ID (tu_...).
+# This only imports/attributes evidence; it DOES NOT create new funds.
+npm run cli -- fund import-topup new-project tu_EXISTING_TEST_TOPUP
+npm run cli -- fund status new-project
 ```
 
 Stripe test-mode funds/balance and fully enabled Connect test accounts are needed for a real test transfer. The account's `payouts_enabled` flag must be true. An absent/disabled destination remains **held** and is not redistributed. Any error after starting a Stripe transfer is treated as **unknown** until reconciled, never automatically re-sent. Payment obligations are immutable in amount and beneficiary.

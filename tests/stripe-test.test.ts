@@ -53,3 +53,50 @@ describe("Stripe TEST available-balance preflight", () => {
     await expect(client.availableBalanceCents("usd")).rejects.toThrow(/invalid/);
   });
 });
+
+
+describe("Stripe TEST top-up receipt verification", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("verifies a succeeded USD TEST top-up and platform identity without creating funds", async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({
+      id: "tu_test123", object: "topup", status: "succeeded", livemode: false,
+      amount: 1100, currency: "usd", balance_transaction: "txn_123456",
+    }), { status: 200 })).mockResolvedValueOnce(new Response(JSON.stringify({
+      id: "acct_platform123", object: "account",
+    }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    expect(await new StripeTestClient("sk_test_example").verifyTestTopup("tu_test123")).toEqual({
+      topupId: "tu_test123", platformAccountId: "acct_platform123",
+      balanceTransactionId: "txn_123456", amountCents: 1100, currency: "usd",
+    });
+    expect(fetchMock.mock.calls.map((x) => x[0])).toEqual([
+      "https://api.stripe.com/v1/topups/tu_test123", "https://api.stripe.com/v1/account",
+    ]);
+    expect(fetchMock.mock.calls.every((x) => x[1]?.method === "GET")).toBe(true);
+  });
+
+  it.each([
+    { status: "pending" }, { status: "reversed" }, { livemode: true },
+    { currency: "eur" }, { amount: "1100" }, { balance_transaction: null },
+    { object: "charge" },
+  ])("rejects unconfirmed or malformed top-up evidence: %o", async (override) => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      id: "tu_test123", object: "topup", status: "succeeded", livemode: false,
+      amount: 1100, currency: "usd", balance_transaction: "txn_123456", ...override,
+    }), { status: 200 })));
+    await expect(new StripeTestClient("sk_test_example").verifyTestTopup("tu_test123"))
+      .rejects.toThrow(/not a succeeded/);
+  });
+
+  it("rejects malformed Stripe platform identity", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({
+      id: "tu_test123", object: "topup", status: "succeeded", livemode: false,
+      amount: 1100, currency: "usd", balance_transaction: "txn_123456",
+    }), { status: 200 })).mockResolvedValueOnce(new Response(JSON.stringify({
+      id: "invalid-platform",
+    }), { status: 200 })));
+    await expect(new StripeTestClient("sk_test_example").verifyTestTopup("tu_test123"))
+      .rejects.toThrow(/identity/);
+  });
+});

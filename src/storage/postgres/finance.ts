@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { Pool, PoolClient } from "pg";
 import { allocateCents } from "../../core/allocation.js";
-import type { PaymentProvider, ProviderTransfer, TransferInstruction } from "../../payments/provider.js";
+import type { PaymentProvider, ProviderTransfer, TransferInstruction, TestFundingProvider, TestTopupReceipt } from "../../payments/provider.js";
 
 function nonblank(value: string, label: string): string {
   if (typeof value !== "string" || !value.trim()) throw new Error(`${label} must be nonblank`);
@@ -52,7 +52,11 @@ export class OpenPayablesFinance {
   /** Operator attestation is NOT automatic bank-balance verification. TEST funds only. */
   async addFunding(projectId: string, amountCents: number, source: string, operator: string) {
     return this.transaction(async (db) => {
-      await db.query("SELECT id FROM openpayables.projects WHERE id=$1 FOR UPDATE", [nonblank(projectId, "project")]);
+      const locked = await db.query("SELECT id FROM openpayables.projects WHERE id=$1 FOR UPDATE", [nonblank(projectId, "project")]);
+      if (locked.rowCount !== 1) throw new Error("Project not found");
+      const verified = await db.query(
+        "SELECT 1 FROM openpayables.funding_events WHERE project_id=$1 AND evidence_kind='stripe_test_topup' LIMIT 1", [projectId]);
+      if (verified.rowCount) throw new Error("Cannot mix operator-attested funding with verified Stripe TEST receipts in one project");
       const result = await db.query(
         `INSERT INTO openpayables.funding_events(id,project_id,amount_cents,source_reference,attested_by)
          VALUES($1,$2,$3,$4,$5) RETURNING *`,
@@ -62,17 +66,65 @@ export class OpenPayablesFinance {
     });
   }
 
+  /** Bind one succeeded Stripe TEST receipt to one project. Not a claim that Stripe assigns the project. */
+  async importTestTopup(projectId: string, topupId: string, provider: TestFundingProvider, operator: string) {
+    projectId = nonblank(projectId, "project");
+    operator = nonblank(operator, "operator");
+    if (!/^tu_[A-Za-z0-9]+$/.test(topupId)) throw new Error("Invalid Stripe TEST top-up ID");
+    // Provider calls are outside the DB transaction. No DB funding is inserted on failure.
+    const receipt: TestTopupReceipt = await provider.verifyTestTopup(topupId);
+    if (receipt.topupId !== topupId || receipt.currency !== "usd" ||
+        !/^acct_[A-Za-z0-9]+$/.test(receipt.platformAccountId) ||
+        !/^txn_[A-Za-z0-9]+$/.test(receipt.balanceTransactionId) ||
+        !Number.isSafeInteger(receipt.amountCents) || receipt.amountCents <= 0) {
+      throw new Error("Provider top-up evidence is invalid");
+    }
+    return this.transaction(async (db) => {
+      // Project lock serializes imports, attested-fund additions, and approvals.
+      const locked = await db.query("SELECT id FROM openpayables.projects WHERE id=$1 FOR UPDATE", [projectId]);
+      if (locked.rowCount !== 1) throw new Error("Project not found");
+      const existing = await db.query(
+        "SELECT evidence_kind,stripe_platform_account_id FROM openpayables.funding_events WHERE project_id=$1", [projectId]);
+      if (existing.rows.some((x) => x.evidence_kind !== "stripe_test_topup")) {
+        throw new Error("Cannot mix Stripe TEST receipts with operator-attested funding in one project");
+      }
+      if (existing.rows.some((x) => x.stripe_platform_account_id !== receipt.platformAccountId)) {
+        throw new Error("Cannot mix Stripe platforms within one project's verified TEST funding");
+      }
+      const result = await db.query(
+        `INSERT INTO openpayables.funding_events
+          (id,project_id,amount_cents,source_reference,attested_by,evidence_kind,
+           stripe_platform_account_id,stripe_topup_id,stripe_balance_transaction_id,verified_at)
+         VALUES($1,$2,$3,$4,$5,'stripe_test_topup',$6,$7,$8,now())
+         ON CONFLICT DO NOTHING RETURNING
+           id,project_id,amount_cents,evidence_kind,stripe_platform_account_id,
+           stripe_topup_id,stripe_balance_transaction_id,verified_at`,
+        [randomUUID(), projectId, receipt.amountCents, `stripe-test:${receipt.platformAccountId}:${topupId}`,
+          operator, receipt.platformAccountId, topupId, receipt.balanceTransactionId],
+      );
+      if (result.rowCount !== 1) throw new Error("Stripe TEST top-up already attributed; duplicate funding refused");
+      return result.rows[0];
+    });
+  }
+
   async fundingStatus(projectId: string) {
     const result = await this.pool.query(
       `SELECT
-        (SELECT COALESCE(SUM(amount_cents),0) FROM openpayables.funding_events WHERE project_id=$1) AS attested,
+        (SELECT COALESCE(SUM(amount_cents),0) FROM openpayables.funding_events
+          WHERE project_id=$1 AND evidence_kind='attested_test') AS attested,
+        (SELECT COALESCE(SUM(amount_cents),0) FROM openpayables.funding_events
+          WHERE project_id=$1 AND evidence_kind='stripe_test_topup') AS verified_test,
         (SELECT COALESCE(SUM(amount_cents),0) FROM openpayables.distribution_periods
           WHERE project_id=$1 AND status='approved') AS reserved`,
       [nonblank(projectId, "project")],
     );
     const attestedCents = safeNumber(result.rows[0].attested);
+    const verifiedTestCents = safeNumber(result.rows[0].verified_test);
     const reservedCents = safeNumber(result.rows[0].reserved);
-    return { projectId, attestedCents, reservedCents, remainingCents: attestedCents - reservedCents };
+    return {
+      projectId, attestedCents, verifiedTestCents, reservedCents,
+      remainingCents: attestedCents + verifiedTestCents - reservedCents,
+    };
   }
 
   async createPeriod(projectId: string, label: string, amountCents: number, operator: string) {
@@ -214,6 +266,15 @@ export class OpenPayablesFinance {
     const pending = await this.getObligation(id);
     if (pending.status !== "ready" || !pending.connectedAccountId) {
       throw new Error(`Not sendable (status=${pending.status}); no retry after uncertain payment`);
+    }
+    const verifiedPlatform = await this.pool.query(
+      `SELECT DISTINCT stripe_platform_account_id FROM openpayables.funding_events
+       WHERE project_id=$1 AND evidence_kind='stripe_test_topup'`, [pending.projectId]);
+    if ((verifiedPlatform.rowCount ?? 0) > 0) {
+      if (verifiedPlatform.rowCount !== 1 ||
+          (await provider.platformAccountId()) !== verifiedPlatform.rows[0].stripe_platform_account_id) {
+        throw new Error("Current Stripe TEST platform does not match project funding receipts; no payment attempted");
+      }
     }
     const available = await provider.availableBalanceCents("usd");
     if (!Number.isSafeInteger(available) || available < pending.amountCents) {

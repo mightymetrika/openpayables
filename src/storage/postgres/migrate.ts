@@ -6,6 +6,7 @@ import { createPool } from "./connection.js";
 const migrations = [
   { version: "001_checkpoint_a", url: new URL("../../../sql/001_checkpoint_a.sql", import.meta.url) },
   { version: "002_checkpoint_b", url: new URL("../../../sql/002_checkpoint_b.sql", import.meta.url) },
+  { version: "003_checkpoint_c2", url: new URL("../../../sql/003_checkpoint_c2.sql", import.meta.url) },
 ];
 
 export async function migrate(pool: Pool): Promise<void> {

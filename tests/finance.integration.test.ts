@@ -12,6 +12,7 @@ class FakeStripeTest implements PaymentProvider {
   availableCents = 10000;
   throwAfterTransfer = false;
   async availableBalanceCents() { return this.availableCents; }
+  async platformAccountId() { return "acct_platformtest"; }
   async accountReady(id: string) { return id.startsWith("acct_"); }
   async createTransfer(x: TransferInstruction): Promise<ProviderTransfer> {
     this.sends++;
@@ -93,6 +94,54 @@ suite("Checkpoint B PostgreSQL integration (DEDICATED test DB)", () => {
     await expect(money.submitObligation(aliceObligation, provider)).rejects.toThrow(/Not sendable/);
     expect(provider.sends).toBe(1);
     expect((await money.getObligation(bobObligation)).status).toBe("held");
+  });
+
+  it("binds Stripe TEST funding to exactly one project and prevents mixing or overspending", async () => {
+    const verifiedProject = `verified-${suffix}`;
+    const competingProject = `competing-${suffix}`;
+    await credits.createProject(verifiedProject, "Verified provider receipt project", "operator");
+    await credits.createProject(competingProject, "Other project", "operator");
+    await credits.joinProject(verifiedProject, a);
+    await credits.joinProject(competingProject, a);
+    await credits.award({ projectId: verifiedProject, contributorId: a, category: "development",
+      size: "large", source: "github", sourceId: suffix, role: "author",
+      reason: "Accepted", approvedBy: "operator" });
+    const topupId = `tu_${suffix.replace(/-/g, "")}`;
+    const verify = async () => ({
+      topupId, platformAccountId: "acct_platformtest", balanceTransactionId: "txn_123abc",
+      amountCents: 1000, currency: "usd" as const,
+    });
+    const provider = { verifyTestTopup: verify };
+    const imported = await money.importTestTopup(verifiedProject, topupId, provider, "operator");
+    expect(imported.evidence_kind).toBe("stripe_test_topup");
+    expect(imported.stripe_topup_id).toBe(topupId);
+    expect(await money.fundingStatus(verifiedProject)).toMatchObject({
+      verifiedTestCents: 1000, attestedCents: 0, remainingCents: 1000,
+    });
+    await expect(money.importTestTopup(verifiedProject, topupId, provider, "operator"))
+      .rejects.toThrow(/already attributed/);
+    await expect(money.importTestTopup(competingProject, topupId, provider, "operator"))
+      .rejects.toThrow(/already attributed/);
+    await expect(money.addFunding(verifiedProject, 300, `attest-${suffix}`, "operator"))
+      .rejects.toThrow(/Cannot mix/);
+    await expect(money.importTestTopup(project, topupId, provider, "operator"))
+      .rejects.toThrow(/Cannot mix/);
+    const period = await money.createPeriod(verifiedProject, `verified-period-${suffix}`, 800, "operator");
+    await money.approvePeriod(period.id, "operator");
+    expect(await money.fundingStatus(verifiedProject)).toMatchObject({ remainingCents: 200, reservedCents: 800 });
+    const excess = await money.createPeriod(verifiedProject, `excess-period-${suffix}`, 300, "operator");
+    await expect(money.approvePeriod(excess.id, "operator")).rejects.toThrow(/Insufficient/);
+    const obligation = (await money.showPeriod(period.id)).obligations[0]!;
+    await money.setDestination(verifiedProject, a, "acct_verifiedalice", "operator");
+    const correct = new FakeStripeTest();
+    await money.prepareObligation(obligation.id, correct);
+    correct.platformAccountId = async () => "acct_different";
+    await expect(money.submitObligation(obligation.id, correct)).rejects.toThrow(/does not match/);
+    expect(correct.sends).toBe(0);
+    const noAttempts = await pool.query(
+      "SELECT COUNT(*)::INT AS n FROM openpayables.payment_attempts WHERE obligation_id=$1", [obligation.id]);
+    expect(noAttempts.rows[0].n).toBe(0);
+    expect((await money.getObligation(obligation.id)).status).toBe("ready");
   });
 
   it("reconciles a timeout and deduplicates a signed-provider event", async () => {
