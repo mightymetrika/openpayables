@@ -1,87 +1,98 @@
 # OpenPayables
 
-Reusable TypeScript infrastructure for **verified open-source contribution credits, cumulative recognition, contributor governance, and eventual real monetary distributions**. This is **Checkpoint A**, not yet a payments product.
+A reusable TypeScript/PostgreSQL package for verified open-source contribution credits, contributor voting, and deterministic revenue-sharing **with actual monetary payment capability as the project goal**.
 
-OpenPayables is a standalone project. It does not modify or connect to the blindstats or randomplayables production applications or databases.
+**Status:** Checkpoint A validated on Windows/PostgreSQL; Checkpoint B v0.2 supplied for local validation. Stripe integration is **TEST-MODE ONLY**. No blindstats or randomplayables databases or applications are modified.
 
-## Delivered in Checkpoint A
+## Delivered
 
-- Project-scoped contributors and configurable contribution categories (four broad defaults).
-- Human-approved **small/medium/large** credit events (1/3/8 points) with evidence references and deduplication.
-- Append-only awards and reversal events; lifetime cumulative balances.
-- Proposals with **frozen contribution-weight snapshots**, immutable yes/no/abstain ballots, and reproducible tallies.
-- Generic PostgreSQL using `pg`, standard SQL migrations and a small Windows-friendly operator CLI.
-- Pure computational tests and opt-in integration tests against a **dedicated test PostgreSQL database**.
+- Contribution credits: project-scoped contributors, configurable categories, manually approved 1/3/8 point events, append-only reversals, deduplication.
+- Governance: immutable weighted ballots with voting weights frozen when a proposal opens.
+- Deterministic distribution: integer-cent allocation with largest-remainder rounding, locked point snapshots, no credit consumption.
+- TEST funding: operator-attested, project-specific funding events; reservation checks prevent two periods from spending the same attested pool.
+- Monetary obligations: paid or held per recipient, independently of other contributors; duplicate sends blocked.
+- Stripe Connect TEST adapter: Express onboarding, account readiness, transfers, status reconciliation, transfer-reversal detection, verified webhook receipt, no live keys.
 
-**Not in Checkpoint A:** funding, allocation of money, Stripe Connect, automatic GitHub ingestion, contributor onboarding, web UI, or production deployment. They are later specified checkpoints, not hidden features.
+**Financial limits:** TEST funding is an **operator attestation**, not verified money in a real bank/Stripe account. Stripe Connect `transferred` means money moved to a connected Stripe account, **not** a confirmed bank payout. No unrestricted live payout path exists; live settlement and compliance are the next checkpoint.
 
-## Requirements
+## Install and validate — Windows PowerShell 5.1
 
-- Windows PowerShell and Node.js **24** (the environment targeted by blindstats).
-- PostgreSQL 16+ (Docker Desktop is one option).
-- An empty, dedicated development database. Never point this package at a blindstats Supabase project.
-
-## Local start (PowerShell)
-
-Download the ZIP, extract the contents into `C:\Users\<you>\Documents\openpayables` and run:
+Requires Node.js 24, npm, PostgreSQL 16+, and two **dedicated** local OpenPayables databases. The supplied test environment below matches a native PostgreSQL 17 installation on port 5432. Do not use the blindstats Supabase databases.
 
 ```powershell
 Set-Location "$HOME\Documents\openpayables"
-node --version
+$env:OPENPAYABLES_DATABASE_URL = 'postgresql://openpayables:openpayables_local_only@127.0.0.1:5432/openpayables'
+$env:OPENPAYABLES_OPERATOR_ID = 'local-operator'
 npm install
-
-# If Docker Desktop is installed and running:
-.\scripts\start-local-postgres.ps1
-
-# Or supply a connection string for YOUR dedicated local PostgreSQL database:
-# $env:OPENPAYABLES_DATABASE_URL = 'postgresql://...'
-# $env:OPENPAYABLES_OPERATOR_ID = 'local-operator'
-
 npm run db:migrate
 npm test
 npm run lint
 npm run build
-.\scripts\checkpoint-a-demo.ps1
-```
-
-The scripts choose the local container name `openpayables-pg` and bind its port to **127.0.0.1:55432**, so they do not use the default PostgreSQL port. The Docker password is **only a known local development credential**; never expose that database publicly or reuse it in a deployed environment.
-
-To run the actual database integration suite, set an explicit test connection string (ideally a separate isolated test database) and run `npm run test:integration`. The basic `npm test` skips these tests without that variable:
-
-```powershell
-$env:OPENPAYABLES_TEST_DATABASE_URL = $env:OPENPAYABLES_DATABASE_URL
+$env:OPENPAYABLES_TEST_DATABASE_URL = 'postgresql://openpayables:openpayables_local_only@127.0.0.1:5432/openpayables_test'
 npm run test:integration
-Remove-Item Env:OPENPAYABLES_TEST_DATABASE_URL
+Remove-Item Env:OPENPAYABLES_TEST_DATABASE_URL -ErrorAction SilentlyContinue
+.\scripts\checkpoint-b-demo.ps1
 ```
 
-The integration tests create uniquely named test records and do not delete immutable credit records; only run them against a disposable development/test database.
+The B demo creates an independent project, credits two contributors 8:3, attests $11 of **TEST** funding, approves/reserves $11, and checks for $8 and $3 held obligations without a Stripe call. Integration tests use a **separate test database** and retain immutable test records there.
 
-## CLI examples
+If using Docker Desktop rather than native PostgreSQL, `scripts/start-local-postgres.ps1` creates the existing local test container on 127.0.0.1:55432. The Docker script is optional.
+
+## Operator CLI — examples
 
 ```powershell
-npm run cli -- project create blindstats-dev "blindstats development"
+npm run cli -- project create my-project "My open-source project"
 npm run cli -- contributor create alice "Alice"
-npm run cli -- project join blindstats-dev alice
-npm run cli -- credit award blindstats-dev alice development large github "org/repo#123" author "Accepted change"
-npm run cli -- credit balances blindstats-dev
-npm run cli -- credit history blindstats-dev
-npm run cli -- proposal open blindstats-dev "Prioritize documentation?" "Advisory vote"
-# Copy the returned proposal UUID:
-npm run cli -- proposal vote "PASTE-PROPOSAL-UUID" alice yes
-npm run cli -- proposal tally "PASTE-PROPOSAL-UUID"
+npm run cli -- project join my-project alice
+npm run cli -- credit award my-project alice development large github "org/repo#1" author "Accepted PR"
+npm run cli -- credit balances my-project
+npm run cli -- proposal open my-project "Next priority?" "Advisory governance vote"
+# Use returned proposal UUID:
+npm run cli -- proposal vote PROPOSAL_UUID alice yes
+npm run cli -- proposal tally PROPOSAL_UUID
+
+# Money entries are operator attestations for LOCAL TEST only:
+npm run cli -- fund add my-project 1100 "pilot-test-001"
+npm run cli -- fund status my-project
+npm run cli -- distribution create my-project "pilot-week-1" 1100
+# Use returned period UUID:
+npm run cli -- distribution approve PERIOD_UUID
+npm run cli -- distribution show PERIOD_UUID
 ```
 
-**Operator safety:** The CLI requires `OPENPAYABLES_OPERATOR_ID` for write operations and records that ID. This provides audit attribution, not secure multi-user authentication. The CLI must remain a trusted, local operator tool; do **not** expose it as a public API. Authentication and role checks are integration concerns for a later stage.
+## Optional Stripe Connect TEST acceptance
 
-## Accounting and governance limitations
+Use only a test secret beginning `sk_test_`. Keep the key private (PowerShell session or ignored local environment). Do not put it into Git, a handoff, or this chat.
 
-- Credits are **not money, equity, or a promise of future payouts**. A financial allocation and settlement subsystem is required before actual compensation.
-- Votes are **advisory** and are not treasury authorizations. One current, immutable ballot is permitted per voter per proposal in v0.1; vote amendments are deferred.
-- No blanket historical backfill: operators award only documented, accepted work. Awards use immutable evidence references and stable contributor IDs, not usernames.
-- Database constraints and the CLI must be the only trusted write paths. Database superusers can bypass triggers; preserve DB access control and backups in production.
+```powershell
+$env:OPENPAYABLES_STRIPE_TEST_SECRET_KEY = 'sk_test_YOUR_OWN_SECRET'
+# Create a test Express account and assign it to a project contributor:
+npm run cli -- stripe account create my-project alice recipient@example.test
+# Use returned acct_... identifier:
+npm run cli -- stripe onboarding link acct_TEST_ACCOUNT https://example.com/refresh https://example.com/return
+# Finish Stripe-hosted TEST onboarding in browser. Provide host URLs you control.
+# Use the obligation UUID returned by `distribution show`:
+npm run cli -- payment prepare OBLIGATION_UUID
+npm run cli -- payment send OBLIGATION_UUID
+npm run cli -- payment reconcile OBLIGATION_UUID
+npm run cli -- payment history OBLIGATION_UUID
+```
 
-## Repository and next step
+Stripe test-mode funds/balance and fully enabled Connect test accounts are needed for a real test transfer. The account's `payouts_enabled` flag must be true. An absent/disabled destination remains **held** and is not redistributed. Any error after starting a Stripe transfer is treated as **unknown** until reconciled, never automatically re-sent. Payment obligations are immutable in amount and beneficiary.
 
-Track `PROJECT_HANDOFF.md` in Git. This ZIP contains complete files, not diffs. Initialize and validate locally before creating an empty public GitHub repository. Next checkpoint: a funded deterministic allocation ledger and Stripe Connect **test-mode** payments, with reconciliation and idempotent retries. No blindstats changes until the standalone system is proven.
+Optional signed local TEST webhook server:
 
-See [`docs/MVP_SPEC_v0.1.md`](docs/MVP_SPEC_v0.1.md) for the accepted MVP plan.
+```powershell
+$env:OPENPAYABLES_STRIPE_TEST_WEBHOOK_SECRET = 'whsec_YOUR_TEST_LISTENER_SECRET'
+npm run webhook:dev
+# Listens only on http://127.0.0.1:8787/stripe.
+# Forward Stripe TEST webhooks there using a separately installed Stripe CLI.
+```
+
+Webhook signatures are validated against the original bytes with a five-minute timestamp tolerance. Only TEST-mode transfer events are recorded; duplicate provider event IDs are ignored.
+
+## Boundaries and continuity
+
+The CLI is a trusted **local operator tool**, not an authenticated public API. No actual money transfer can be attempted without a Stripe TEST credential, a connected account, a funded and approved period, and explicit operator execution. Financial data is stored in the `openpayables` PostgreSQL schema; no Supabase, Prisma, Clerk or Next.js coupling.
+
+Use `PROJECT_HANDOFF.md` for the current checkpoint. See `docs/MVP_SPEC_v0.1.md` for the MVP policy. Do not build a frontend, tax service, automatic GitHub scraper, or blindstats integration until a working, reconciled Stripe test transfer is validated.

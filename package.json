@@ -1,21 +1,26 @@
 {
   "name": "openpayables",
-  "version": "0.1.0-alpha.1",
+  "version": "0.2.0-alpha.1",
   "private": true,
   "description": "Project-scoped contribution credits, governance and deterministic revenue-sharing infrastructure",
   "type": "module",
   "license": "MIT",
-  "engines": { "node": ">=24" },
+  "engines": {
+    "node": ">=24"
+  },
   "scripts": {
     "cli": "tsx src/cli/index.ts",
     "db:migrate": "tsx src/storage/postgres/migrate.ts",
     "test": "vitest run",
-    "test:integration": "vitest run tests/postgres.integration.test.ts",
+    "test:integration": "vitest run tests/postgres.integration.test.ts tests/finance.integration.test.ts",
     "lint": "eslint .",
     "build": "tsc -p tsconfig.json",
-    "check": "npm test && npm run lint && npm run build"
+    "check": "npm test && npm run lint && npm run build",
+    "webhook:dev": "tsx src/server/webhook.ts"
   },
-  "dependencies": { "pg": "^8.13.1" },
+  "dependencies": {
+    "pg": "^8.13.1"
+  },
   "devDependencies": {
     "@eslint/js": "^9.25.0",
     "@types/node": "^24.0.0",

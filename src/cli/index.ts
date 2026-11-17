@@ -3,6 +3,8 @@ import { createPool } from "../storage/postgres/connection.js";
 import { OpenPayablesStore } from "../storage/postgres/repository.js";
 import type { AwardSize } from "../core/credits.js";
 import type { VoteChoice } from "../core/voting.js";
+import { OpenPayablesFinance } from "../storage/postgres/finance.js";
+import { StripeTestClient } from "../payments/stripe/test-client.js";
 
 const HELP = `OpenPayables Checkpoint A — local operator CLI
   project create <project-id> <name>
@@ -17,6 +19,18 @@ const HELP = `OpenPayables Checkpoint A — local operator CLI
   proposal vote <proposal-uuid> <contributor-id> <yes|no|abstain>
   proposal tally <proposal-uuid>
   proposal close <proposal-uuid>
+  fund add <project-id> <cents> <funding-reference>    (TEST attestation only)
+  fund status <project-id>
+  distribution create <project-id> <period-label> <cents>
+  distribution approve <period-uuid>
+  distribution show <period-uuid>
+  stripe account create <project-id> <contributor-id> <email>
+  stripe onboarding link <stripe-account-id> <refresh-url> <return-url>
+  payment destination <project-id> <contributor-id> <stripe-acct-id>
+  payment prepare <obligation-uuid>
+  payment send <obligation-uuid>                       (Stripe TEST mode only)
+  payment reconcile <obligation-uuid>
+  payment history <obligation-uuid>
 Set OPENPAYABLES_DATABASE_URL to a dedicated development PostgreSQL database.
 Set OPENPAYABLES_OPERATOR_ID for all write commands. Neither is read from host apps.`;
 
@@ -38,6 +52,7 @@ async function main() {
   }
   const pool = createPool();
   const store = new OpenPayablesStore(pool);
+  const finance = new OpenPayablesFinance(pool);
   try {
     let result: unknown;
     const key = `${group} ${command}`;
@@ -70,6 +85,40 @@ async function main() {
         required(args, 1); result = await store.tallyProposal(args[0]!); break;
       case "proposal close":
         required(args, 1); result = await store.closeProposal(args[0]!, operator()); break;
+      case "fund add":
+        required(args, 3); result = await finance.addFunding(args[0]!, Number(args[1]), args[2]!, operator()); break;
+      case "fund status":
+        required(args, 1); result = await finance.fundingStatus(args[0]!); break;
+      case "distribution create":
+        required(args, 3); result = await finance.createPeriod(args[0]!, args[1]!, Number(args[2]), operator()); break;
+      case "distribution approve":
+        required(args, 1); result = await finance.approvePeriod(args[0]!, operator()); break;
+      case "distribution show":
+        required(args, 1); result = await finance.showPeriod(args[0]!); break;
+      case "payment destination":
+        required(args, 3); result = await finance.setDestination(args[0]!, args[1]!, args[2]!, operator()); break;
+      case "payment prepare":
+        required(args, 1); operator(); result = await finance.prepareObligation(args[0]!, new StripeTestClient()); break;
+      case "payment send":
+        required(args, 1); operator(); result = await finance.submitObligation(args[0]!, new StripeTestClient()); break;
+      case "payment reconcile":
+        required(args, 1); operator(); result = await finance.reconcileObligation(args[0]!, new StripeTestClient()); break;
+      case "payment history":
+        required(args, 1); result = await finance.paymentHistory(args[0]!); break;
+      case "stripe account":
+        if (args[0] !== "create") throw new Error(HELP);
+        required(args, 4); operator();
+        {
+          const stripe = new StripeTestClient();
+          const account = await stripe.createExpressAccount(args[3]!);
+          await finance.setDestination(args[1]!, args[2]!, account.id, operator());
+          result = { accountId: account.id, projectId: args[1], contributorId: args[2] };
+        }
+        break;
+      case "stripe onboarding":
+        if (args[0] !== "link") throw new Error(HELP);
+        required(args, 4); operator();
+        result = await new StripeTestClient().onboardingLink(args[1]!, args[2]!, args[3]!); break;
       default: throw new Error(`Unknown command: ${key}\n${HELP}`);
     }
     console.log(JSON.stringify(result, null, 2));
