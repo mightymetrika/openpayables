@@ -2,10 +2,9 @@
 
 A reusable TypeScript/PostgreSQL package for verified open-source contribution credits, contributor voting, and deterministic revenue-sharing **with actual monetary payment capability as the project goal**.
 
-**Status:** Checkpoint A validated on Windows/PostgreSQL; Checkpoint B v0.2 supplied for local validation. Stripe integration is **TEST-MODE ONLY**. No blindstats or randomplayables databases or applications are modified.
+**Status:** Checkpoint A and Checkpoint B v0.2 validated locally on Windows/PostgreSQL. The first end-to-end Stripe Connect **TEST-mode** transfer was independently verified on 2026-11-17. No live payment capability is enabled. No blindstats or randomplayables databases or applications are modified.
 
 ## Delivered
-
 - Contribution credits: project-scoped contributors, configurable categories, manually approved 1/3/8 point events, append-only reversals, deduplication.
 - Governance: immutable weighted ballots with voting weights frozen when a proposal opens.
 - Deterministic distribution: integer-cent allocation with largest-remainder rounding, locked point snapshots, no credit consumption.
@@ -13,7 +12,17 @@ A reusable TypeScript/PostgreSQL package for verified open-source contribution c
 - Monetary obligations: paid or held per recipient, independently of other contributors; duplicate sends blocked.
 - Stripe Connect TEST adapter: Express onboarding, account readiness, transfers, status reconciliation, transfer-reversal detection, verified webhook receipt, no live keys.
 
-**Financial limits:** TEST funding is an **operator attestation**, not verified money in a real bank/Stripe account. Stripe Connect `transferred` means money moved to a connected Stripe account, **not** a confirmed bank payout. No unrestricted live payout path exists; live settlement and compliance are the next checkpoint.
+**Financial limits:** TEST funding is an **operator attestation**, not verified money in a real bank/Stripe account. Test Stripe transfers separately require available simulated funds in the Stripe platform balance. Stripe Connect `transferred` means funds moved to a connected Stripe account, **not** a confirmed bank payout. No unrestricted live payout path exists; live settlement and compliance require further work.
+
+## Checkpoint B sandbox acceptance — passed 2026-11-17
+- An isolated OpenPayables Development Stripe sandbox was used; `livemode` was `false`.
+- A test Express connected account was onboarded successfully (`details_submitted`, `payouts_enabled` and `charges_enabled` all `true`).
+- A $20.00 test top-up succeeded and became available in the platform's simulated Stripe balance. This was separate from OpenPayables' $11.00 operator-attested TEST funding entry.
+- From an existing 8:3 credit allocation of $11.00, the CLI prepared and sent Alice's **800-cent** obligation. Stripe independently returned the same 800-cent USD transfer to the intended connected account, with `reversed = false`.
+- Local reconciliation retained the same Stripe transfer ID; the obligation was `transferred` with **one** recorded payment attempt. Bob's **300-cent** obligation remained `held` with zero attempts.
+- A dedicated test PostgreSQL database passed **6/6 integration tests**. `npm run check` passed **15/15 unit tests**, ESLint and the TypeScript build. The six integration cases skipped in `npm run check` were run and passed separately. The `development` working tree was clean.
+
+This is an end-to-end **simulated-money Stripe transfer**, not proof of a bank payout, production readiness, or legal/compliance approval for live revenue sharing.
 
 ## Install and validate — Windows PowerShell 5.1
 
@@ -50,7 +59,6 @@ npm run cli -- proposal open my-project "Next priority?" "Advisory governance vo
 # Use returned proposal UUID:
 npm run cli -- proposal vote PROPOSAL_UUID alice yes
 npm run cli -- proposal tally PROPOSAL_UUID
-
 # Money entries are operator attestations for LOCAL TEST only:
 npm run cli -- fund add my-project 1100 "pilot-test-001"
 npm run cli -- fund status my-project
@@ -65,7 +73,7 @@ npm run cli -- distribution show PERIOD_UUID
 Use only a test secret beginning `sk_test_`. Keep the key private (PowerShell session or ignored local environment). Do not put it into Git, a handoff, or this chat.
 
 ```powershell
-$env:OPENPAYABLES_STRIPE_TEST_SECRET_KEY = 'sk_test_YOUR_OWN_SECRET'
+# Supply the Stripe TEST key privately in the local environment before running the CLI.
 # Create a test Express account and assign it to a project contributor:
 npm run cli -- stripe account create my-project alice recipient@example.test
 # Use returned acct_... identifier:
@@ -93,6 +101,6 @@ Webhook signatures are validated against the original bytes with a five-minute t
 
 ## Boundaries and continuity
 
-The CLI is a trusted **local operator tool**, not an authenticated public API. No actual money transfer can be attempted without a Stripe TEST credential, a connected account, a funded and approved period, and explicit operator execution. Financial data is stored in the `openpayables` PostgreSQL schema; no Supabase, Prisma, Clerk or Next.js coupling.
+The CLI is a trusted **local operator tool**, not an authenticated public API. No Stripe test transfer can be attempted without a Stripe TEST credential, an enabled connected account, an approved and funded distribution period, and explicit operator execution. Financial data is stored in the `openpayables` PostgreSQL schema; no Supabase, Prisma, Clerk or Next.js coupling.
 
-Use `PROJECT_HANDOFF.md` for the current checkpoint. See `docs/MVP_SPEC_v0.1.md` for the MVP policy. Do not build a frontend, tax service, automatic GitHub scraper, or blindstats integration until a working, reconciled Stripe test transfer is validated.
+Use `PROJECT_HANDOFF.md` for the current checkpoint. See `docs/MVP_SPEC_v0.1.md` for the MVP policy. The first reconciled Stripe TEST transfer has now been demonstrated. The next implementation milestone is to make real-money settlement safe and compliant before enabling live payments; this does not justify prematurely adding a frontend, tax service, GitHub scraper, or blindstats integration.
