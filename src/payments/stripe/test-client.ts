@@ -28,6 +28,24 @@ export class StripeTestClient implements PaymentProvider {
     return result as T;
   }
 
+  /** Available funds for the authenticated TEST platform, not project-specific revenue. */
+  async availableBalanceCents(currency: "usd"): Promise<number> {
+    const balance = await this.request<{
+      livemode: boolean;
+      available: { currency: string; amount: number }[];
+    }>("GET", "/balance");
+    if (balance.livemode !== false || !Array.isArray(balance.available)) {
+      throw new Error("Stripe balance response did not prove TEST mode with available balances");
+    }
+    const matches = balance.available.filter((entry) => entry?.currency === currency);
+    if (matches.some((entry) => !Number.isSafeInteger(entry.amount))) {
+      throw new Error("Stripe balance returned an invalid available amount");
+    }
+    const cents = matches.reduce((sum, entry) => sum + entry.amount, 0);
+    if (!Number.isSafeInteger(cents)) throw new Error("Stripe available balance exceeds safe integer range");
+    return cents;
+  }
+
   async accountReady(accountId: string): Promise<boolean> {
     if (!/^acct_[A-Za-z0-9]+$/.test(accountId)) throw new Error("Invalid Stripe connected account ID");
     const account = await this.request<{ payouts_enabled: boolean; deleted?: boolean }>("GET", `/accounts/${accountId}`);

@@ -9,7 +9,9 @@ import type { PaymentProvider, ProviderTransfer, TransferInstruction } from "../
 class FakeStripeTest implements PaymentProvider {
   readonly transfers = new Map<string, ProviderTransfer>();
   sends = 0;
+  availableCents = 10000;
   throwAfterTransfer = false;
+  async availableBalanceCents() { return this.availableCents; }
   async accountReady(id: string) { return id.startsWith("acct_"); }
   async createTransfer(x: TransferInstruction): Promise<ProviderTransfer> {
     this.sends++;
@@ -74,11 +76,18 @@ suite("Checkpoint B PostgreSQL integration (DEDICATED test DB)", () => {
     await expect(money.approvePeriod(extra.id, "operator")).rejects.toThrow(/Insufficient/);
   });
 
-  it("holds unconfigured payees, sends once and never blindly retries", async () => {
+  it("holds unconfigured payees, blocks an unfunded attempt, sends once and never blindly retries", async () => {
     const provider = new FakeStripeTest();
     await expect(money.prepareObligation(aliceObligation, provider)).rejects.toThrow(/no Stripe/);
     await money.setDestination(project, a, "acct_alice123", "operator");
     expect((await money.prepareObligation(aliceObligation, provider)).status).toBe("ready");
+    provider.availableCents = 799;
+    await expect(money.submitObligation(aliceObligation, provider)).rejects.toThrow(/Insufficient available/);
+    expect((await money.getObligation(aliceObligation)).status).toBe("ready");
+    const noAttempts = await pool.query("SELECT COUNT(*)::INT AS n FROM openpayables.payment_attempts WHERE obligation_id=$1", [aliceObligation]);
+    expect(noAttempts.rows[0].n).toBe(0);
+    expect(provider.sends).toBe(0);
+    provider.availableCents = 800;
     expect((await money.submitObligation(aliceObligation, provider)).status).toBe("transferred");
     expect(provider.sends).toBe(1);
     await expect(money.submitObligation(aliceObligation, provider)).rejects.toThrow(/Not sendable/);

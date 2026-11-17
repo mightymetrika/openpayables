@@ -208,6 +208,17 @@ export class OpenPayablesFinance {
 
   /** A transfer call happens at most ONCE per obligation. Ambiguous results are reconciliation-only. */
   async submitObligation(id: string, provider: PaymentProvider): Promise<Obligation> {
+    // Read-only provider liquidity check BEFORE reserving an immutable payment attempt.
+    // This is a safety preflight, not proof of a project's funded revenue or an
+    // atomic reservation at Stripe; Stripe still enforces final transfer availability.
+    const pending = await this.getObligation(id);
+    if (pending.status !== "ready" || !pending.connectedAccountId) {
+      throw new Error(`Not sendable (status=${pending.status}); no retry after uncertain payment`);
+    }
+    const available = await provider.availableBalanceCents("usd");
+    if (!Number.isSafeInteger(available) || available < pending.amountCents) {
+      throw new Error(`Insufficient available Stripe TEST platform funds: ${available} cents for ${pending.amountCents}-cent obligation; no payment attempt reserved`);
+    }
     const instruction = await this.transaction(async (db): Promise<TransferInstruction> => {
       const result = await db.query("SELECT * FROM openpayables.distribution_obligations WHERE id=$1 FOR UPDATE", [id]);
       if (result.rowCount !== 1) throw new Error("Obligation not found");

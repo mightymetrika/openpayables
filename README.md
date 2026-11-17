@@ -84,6 +84,8 @@ npm run cli -- payment prepare OBLIGATION_UUID
 npm run cli -- payment send OBLIGATION_UUID
 npm run cli -- payment reconcile OBLIGATION_UUID
 npm run cli -- payment history OBLIGATION_UUID
+# Read-only balance preflight for the authenticated Stripe TEST platform:
+npm run cli -- stripe balance
 ```
 
 Stripe test-mode funds/balance and fully enabled Connect test accounts are needed for a real test transfer. The account's `payouts_enabled` flag must be true. An absent/disabled destination remains **held** and is not redistributed. Any error after starting a Stripe transfer is treated as **unknown** until reconciled, never automatically re-sent. Payment obligations are immutable in amount and beneficiary.
@@ -98,6 +100,12 @@ npm run webhook:dev
 ```
 
 Webhook signatures are validated against the original bytes with a five-minute timestamp tolerance. Only TEST-mode transfer events are recorded; duplicate provider event IDs are ignored.
+
+## Checkpoint C1 — TEST-mode available-balance preflight (development patch)
+
+The next vertical slice adds a read-only `npm run cli -- stripe balance` command and checks Stripe's available USD **test** balance before `payment send` reserves an immutable attempt. If funds are insufficient or Stripe's balance response cannot be verified as test-mode, the `ready` obligation is left unchanged with no send attempt. Do not rerun a transfer with uncertain outcome: `unknown` still requires reconciliation.
+
+This balance preflight does **not** reserve funds at Stripe, prove project-specific receipts, or substitute for project cash accounting, taxes, compliance, or provider approval. The local operator-attested test ledger remains separate. Live keys remain forbidden. Validate this patch on `development` before treating C1 as accepted.
 
 ## Boundaries and continuity
 

@@ -15,6 +15,8 @@ export interface TransferInstruction {
   idempotencyKey: string;
 }
 export interface PaymentProvider {
+  /** Live-mode implementations are prohibited until the separate release gate passes. */
+  availableBalanceCents(currency: "usd"): Promise<number>;
   accountReady(accountId: string): Promise<boolean>;
   createTransfer(instruction: TransferInstruction): Promise<ProviderTransfer>;
   retrieveTransfer(transferId: string): Promise<ProviderTransfer>;
