@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { Pool, PoolClient } from "pg";
 import { allocateCents } from "../../core/allocation.js";
-import type { PaymentProvider, ProviderTransfer, TransferInstruction, TestFundingProvider, TestTopupReceipt } from "../../payments/provider.js";
+import type { PaymentProvider, ProviderTransfer, TransferInstruction, TestFundingProvider, TestTopupReceipt, TestTopupObservation } from "../../payments/provider.js";
 
 function nonblank(value: string, label: string): string {
   if (typeof value !== "string" || !value.trim()) throw new Error(`${label} must be nonblank`);
@@ -107,6 +107,154 @@ export class OpenPayablesFinance {
     });
   }
 
+  /** TEST funding is bound to one authenticated Stripe platform per project. */
+  async verifiedPlatformForProject(projectId: string): Promise<string | null> {
+    const rows = await this.pool.query(
+      `SELECT DISTINCT stripe_platform_account_id FROM openpayables.funding_events
+       WHERE project_id=$1 AND evidence_kind='stripe_test_topup'`,
+      [nonblank(projectId, "project")],
+    );
+    if (rows.rows.length > 1) throw new Error("Verified project spans multiple Stripe platforms");
+    return rows.rows.length ? String(rows.rows[0].stripe_platform_account_id) : null;
+  }
+
+  async verifiedPlatformForPeriod(periodId: string): Promise<string | null> {
+    const period = await this.pool.query("SELECT project_id FROM openpayables.distribution_periods WHERE id=$1", [periodId]);
+    if (period.rowCount !== 1) throw new Error("Distribution period not found");
+    return this.verifiedPlatformForProject(String(period.rows[0].project_id));
+  }
+
+  /** Store a permanent, immutable warning when an imported TEST receipt changes. */
+  private async recheckPlatformTestReceipts(
+    platformId: string, provider: TestFundingProvider & Pick<PaymentProvider, "platformAccountId">, operator: string,
+  ) {
+    operator = nonblank(operator, "operator");
+    if ((await provider.platformAccountId()) !== platformId) {
+      throw new Error("Current Stripe TEST platform does not match verified funding receipts");
+    }
+    const receipts = await this.pool.query(
+      `SELECT id,project_id,stripe_topup_id,stripe_balance_transaction_id,amount_cents
+       FROM openpayables.funding_events
+       WHERE evidence_kind='stripe_test_topup' AND stripe_platform_account_id=$1
+       ORDER BY project_id,id`, [platformId],
+    );
+    let flagged = 0;
+    for (const receipt of receipts.rows) {
+      // A provider/network failure is NOT interpreted as a reversal. It aborts preflight.
+      const observed: TestTopupObservation = await provider.inspectTestTopup(String(receipt.stripe_topup_id));
+      const ok = observed.topupId === receipt.stripe_topup_id &&
+        observed.platformAccountId === platformId && observed.status === "succeeded" &&
+        observed.currency === "usd" && observed.amountCents === safeNumber(receipt.amount_cents) &&
+        observed.balanceTransactionId === receipt.stripe_balance_transaction_id;
+      if (!ok) {
+        const reason = `Provider receipt changed: status=${observed.status}; amount=${observed.amountCents}; currency=${observed.currency}; transaction=${observed.balanceTransactionId ?? "none"}; account=${observed.platformAccountId}`.slice(0, 450);
+        const inserted = await this.transaction(async (db) => {
+          // Project lock prevents this receipt being flagged during its own approval.
+          // Do NOT acquire the platform lock: a sending process can hold it while rechecking.
+          await db.query("SELECT id FROM openpayables.projects WHERE id=$1 FOR UPDATE", [receipt.project_id]);
+          const result = await db.query(
+            `INSERT INTO openpayables.funding_receipt_alerts
+               (funding_event_id,project_id,observed_status,reason,identified_by)
+             VALUES($1,$2,$3,$4,$5) ON CONFLICT(funding_event_id) DO NOTHING
+             RETURNING funding_event_id`,
+            [receipt.id, receipt.project_id, observed.status, reason, operator],
+          );
+          return result.rowCount === 1;
+        });
+        if (inserted) flagged++;
+      }
+    }
+    const alerts = await this.pool.query(
+      `SELECT COUNT(*)::INT AS n FROM openpayables.funding_receipt_alerts a
+       JOIN openpayables.funding_events f ON f.id=a.funding_event_id
+       WHERE f.stripe_platform_account_id=$1`, [platformId],
+    );
+    return { platformAccountId: platformId, checked: receipts.rows.length, newlyObservedProblems: flagged,
+      blockedReceipts: Number(alerts.rows[0].n) };
+  }
+
+  async recheckProjectTestFunding(
+    projectId: string, provider: TestFundingProvider & Pick<PaymentProvider, "platformAccountId">, operator: string,
+  ) {
+    const platform = await this.verifiedPlatformForProject(projectId);
+    if (!platform) throw new Error("Project has no verified Stripe TEST funding to recheck");
+    return this.recheckPlatformTestReceipts(platform, provider, operator);
+  }
+
+  /** Historical provider receipts minus permanent hold alerts, and all frozen approved periods. */
+  private async platformFundingSummary(platformId: string, db: Pool | PoolClient = this.pool) {
+    const result = await db.query(
+      `SELECT
+        (SELECT COALESCE(SUM(f.amount_cents),0)
+         FROM openpayables.funding_events f
+         LEFT JOIN openpayables.funding_receipt_alerts a ON a.funding_event_id=f.id
+         WHERE f.evidence_kind='stripe_test_topup' AND f.stripe_platform_account_id=$1
+           AND a.funding_event_id IS NULL) AS funded,
+        (SELECT COALESCE(SUM(d.amount_cents),0)
+         FROM openpayables.distribution_periods d
+         WHERE d.status='approved' AND EXISTS (
+           SELECT 1 FROM openpayables.funding_events f
+           WHERE f.project_id=d.project_id AND f.evidence_kind='stripe_test_topup'
+             AND f.stripe_platform_account_id=$1)) AS committed`, [platformId],
+    );
+    return { fundedCents: safeNumber(result.rows[0].funded), committedCents: safeNumber(result.rows[0].committed) };
+  }
+
+  /** Outstanding obligations belong to the platform even when another project is sending. */
+  private async platformUnpaidCents(platformId: string): Promise<number> {
+    const result = await this.pool.query(
+      `SELECT COALESCE(SUM(o.amount_cents),0) AS cents
+       FROM openpayables.distribution_obligations o
+       WHERE o.status IN ('held','ready','submitting','unknown','reversal_review','reversed')
+         AND EXISTS (SELECT 1 FROM openpayables.funding_events f
+           WHERE f.project_id=o.project_id AND f.evidence_kind='stripe_test_topup'
+             AND f.stripe_platform_account_id=$1)`, [platformId],
+    );
+    return safeNumber(result.rows[0].cents);
+  }
+
+  /** Serialize TEST payment preflight and provider transfer against one Stripe platform. */
+  private async withPlatformLock<T>(platformId: string, fn: () => Promise<T>): Promise<T> {
+    const db = await this.pool.connect();
+    let acquired = false;
+    let discardConnection = false;
+    let operationFailed = false;
+    let operationError: unknown;
+    let releaseError: Error | undefined;
+    let result!: T;
+
+    try {
+      await db.query("SELECT pg_advisory_lock(94001,hashtext($1))", [platformId]);
+      acquired = true;
+      result = await fn();
+    } catch (error) {
+      operationFailed = true;
+      operationError = error;
+      // A failed lock acquisition may have reached PostgreSQL. Do not reuse the session.
+      if (!acquired) discardConnection = true;
+    }
+
+    if (acquired) {
+      try {
+        const unlocked = await db.query(
+          "SELECT pg_advisory_unlock(94001,hashtext($1)) AS unlocked", [platformId],
+        );
+        if (unlocked.rows[0]?.unlocked !== true) {
+          throw new Error("Stripe platform advisory lock could not be released");
+        }
+      } catch (error) {
+        // Never return a possibly locked session to the connection pool.
+        discardConnection = true;
+        releaseError = error instanceof Error ? error : new Error(String(error));
+      }
+    }
+    db.release(discardConnection);
+
+    if (releaseError) throw releaseError;
+    if (operationFailed) throw operationError;
+    return result;
+  }
+
   async fundingStatus(projectId: string) {
     const result = await this.pool.query(
       `SELECT
@@ -114,16 +262,20 @@ export class OpenPayablesFinance {
           WHERE project_id=$1 AND evidence_kind='attested_test') AS attested,
         (SELECT COALESCE(SUM(amount_cents),0) FROM openpayables.funding_events
           WHERE project_id=$1 AND evidence_kind='stripe_test_topup') AS verified_test,
+        (SELECT COALESCE(SUM(f.amount_cents),0) FROM openpayables.funding_events f
+          JOIN openpayables.funding_receipt_alerts a ON a.funding_event_id=f.id
+          WHERE f.project_id=$1) AS blocked_test,
         (SELECT COALESCE(SUM(amount_cents),0) FROM openpayables.distribution_periods
           WHERE project_id=$1 AND status='approved') AS reserved`,
       [nonblank(projectId, "project")],
     );
     const attestedCents = safeNumber(result.rows[0].attested);
     const verifiedTestCents = safeNumber(result.rows[0].verified_test);
+    const blockedVerifiedCents = safeNumber(result.rows[0].blocked_test);
     const reservedCents = safeNumber(result.rows[0].reserved);
     return {
-      projectId, attestedCents, verifiedTestCents, reservedCents,
-      remainingCents: attestedCents + verifiedTestCents - reservedCents,
+      projectId, attestedCents, verifiedTestCents, blockedVerifiedCents, reservedCents,
+      remainingCents: attestedCents + verifiedTestCents - blockedVerifiedCents - reservedCents,
     };
   }
 
@@ -136,7 +288,15 @@ export class OpenPayablesFinance {
     return result.rows[0];
   }
 
-  async approvePeriod(periodId: string, operator: string) {
+  async approvePeriod(
+    periodId: string, operator: string,
+    provider?: TestFundingProvider & Pick<PaymentProvider, "platformAccountId">,
+  ) {
+    const preflightPlatform = await this.verifiedPlatformForPeriod(periodId);
+    if (preflightPlatform) {
+      if (!provider) throw new Error("Verified Stripe TEST funding requires a provider recheck before approval");
+      await this.recheckPlatformTestReceipts(preflightPlatform, provider, operator);
+    }
     return this.transaction(async (db) => {
       // Serialize all fund reservations for a project. Concurrent approvals cannot oversubscribe.
       const periodResult = await db.query("SELECT * FROM openpayables.distribution_periods WHERE id=$1", [periodId]);
@@ -145,15 +305,33 @@ export class OpenPayablesFinance {
       await db.query("SELECT id FROM openpayables.projects WHERE id=$1 FOR UPDATE", [period.project_id]);
       const locked = await db.query("SELECT * FROM openpayables.distribution_periods WHERE id=$1 FOR UPDATE", [periodId]);
       if (locked.rows[0].status !== "draft") throw new Error("Distribution period already approved");
+      const platformRows = await db.query(
+        `SELECT DISTINCT stripe_platform_account_id FROM openpayables.funding_events
+         WHERE project_id=$1 AND evidence_kind='stripe_test_topup'`, [period.project_id],
+      );
+      if (platformRows.rows.length > 1) throw new Error("Verified project spans multiple Stripe platforms");
+      const platform = platformRows.rows.length ? String(platformRows.rows[0].stripe_platform_account_id) : null;
+      if (platform) {
+        if (platform !== preflightPlatform) throw new Error("Project funding changed during approval; retry inspection");
+        await db.query("SELECT pg_advisory_xact_lock(94001,hashtext($1))", [platform]);
+      }
       const pool = await db.query(
         `SELECT
-          (SELECT COALESCE(SUM(amount_cents),0) FROM openpayables.funding_events WHERE project_id=$1) AS funded,
+          (SELECT COALESCE(SUM(f.amount_cents),0) FROM openpayables.funding_events f
+           LEFT JOIN openpayables.funding_receipt_alerts a ON a.funding_event_id=f.id
+           WHERE f.project_id=$1 AND a.funding_event_id IS NULL) AS funded,
           (SELECT COALESCE(SUM(amount_cents),0) FROM openpayables.distribution_periods
             WHERE project_id=$1 AND status='approved') AS reserved`,
         [period.project_id],
       );
       const available = safeNumber(pool.rows[0].funded) - safeNumber(pool.rows[0].reserved);
-      if (available < safeNumber(period.amount_cents)) throw new Error("Insufficient attested unreserved funding");
+      if (available < safeNumber(period.amount_cents)) throw new Error("Insufficient unreserved project funding");
+      if (platform) {
+        const summary = await this.platformFundingSummary(platform, db);
+        if (summary.fundedCents - summary.committedCents < safeNumber(period.amount_cents)) {
+          throw new Error("Insufficient uncommitted verified TEST funds across Stripe platform projects");
+        }
+      }
 
       const balances = await db.query(
         `SELECT contributor_id, SUM(points_delta)::BIGINT AS points
@@ -259,26 +437,41 @@ export class OpenPayablesFinance {
   }
 
   /** A transfer call happens at most ONCE per obligation. Ambiguous results are reconciliation-only. */
-  async submitObligation(id: string, provider: PaymentProvider): Promise<Obligation> {
-    // Read-only provider liquidity check BEFORE reserving an immutable payment attempt.
-    // This is a safety preflight, not proof of a project's funded revenue or an
-    // atomic reservation at Stripe; Stripe still enforces final transfer availability.
+  async submitObligation(id: string, provider: PaymentProvider & Partial<TestFundingProvider>): Promise<Obligation> {
     const pending = await this.getObligation(id);
     if (pending.status !== "ready" || !pending.connectedAccountId) {
       throw new Error(`Not sendable (status=${pending.status}); no retry after uncertain payment`);
     }
-    const verifiedPlatform = await this.pool.query(
-      `SELECT DISTINCT stripe_platform_account_id FROM openpayables.funding_events
-       WHERE project_id=$1 AND evidence_kind='stripe_test_topup'`, [pending.projectId]);
-    if ((verifiedPlatform.rowCount ?? 0) > 0) {
-      if (verifiedPlatform.rowCount !== 1 ||
-          (await provider.platformAccountId()) !== verifiedPlatform.rows[0].stripe_platform_account_id) {
-        throw new Error("Current Stripe TEST platform does not match project funding receipts; no payment attempted");
-      }
+    const platform = await this.verifiedPlatformForProject(pending.projectId);
+    if (!platform) return this.sendAfterPreflight(id, provider, pending.amountCents);
+    if ((await provider.platformAccountId()) !== platform) {
+      throw new Error("Current Stripe TEST platform does not match project funding receipts; no payment attempted");
     }
+    if (!provider.inspectTestTopup) {
+      throw new Error("Provider cannot recheck verified Stripe TEST funding; no payment attempted");
+    }
+    // Recheck first, outside the platform lock, so a simultaneous distribution
+    // approval cannot deadlock with a receipt-audit project lock.
+    await this.recheckPlatformTestReceipts(
+      platform, provider as PaymentProvider & TestFundingProvider, "automatic-payment-preflight",
+    );
+    // The session advisory lock remains held until transfer/reconciliation finish.
+    // Concurrent verified-project sends cannot use the same balance snapshot.
+    return this.withPlatformLock(platform, async () => {
+      const summary = await this.platformFundingSummary(platform);
+      if (summary.fundedCents < summary.committedCents) {
+        throw new Error("Stripe TEST verified funding shortfall across projects; payment blocked for review");
+      }
+      const outstanding = await this.platformUnpaidCents(platform);
+      return this.sendAfterPreflight(id, provider, Math.max(pending.amountCents, outstanding));
+    });
+  }
+
+  /** Stripe enforces actual liquidity; local preflight is not a Stripe reservation. */
+  private async sendAfterPreflight(id: string, provider: PaymentProvider, requiredAvailable: number): Promise<Obligation> {
     const available = await provider.availableBalanceCents("usd");
-    if (!Number.isSafeInteger(available) || available < pending.amountCents) {
-      throw new Error(`Insufficient available Stripe TEST platform funds: ${available} cents for ${pending.amountCents}-cent obligation; no payment attempt reserved`);
+    if (!Number.isSafeInteger(available) || available < requiredAvailable) {
+      throw new Error(`Insufficient available Stripe TEST platform funds: ${available} cents for ${requiredAvailable}-cent obligation/commitments; no payment attempt reserved`);
     }
     const instruction = await this.transaction(async (db): Promise<TransferInstruction> => {
       const result = await db.query("SELECT * FROM openpayables.distribution_obligations WHERE id=$1 FOR UPDATE", [id]);
@@ -309,7 +502,6 @@ export class OpenPayablesFinance {
       return this.getObligation(id);
     }
   }
-
   async acceptProviderTransfer(id: string, transfer: ProviderTransfer): Promise<Obligation> {
     return this.transaction(async (db) => {
       const result = await db.query("SELECT * FROM openpayables.distribution_obligations WHERE id=$1 FOR UPDATE", [id]);

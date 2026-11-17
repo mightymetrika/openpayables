@@ -33,6 +33,17 @@ export interface TestTopupReceipt {
   currency: "usd";
 }
 
+/** Current provider state; unlike import evidence, a reversed receipt is returned for audit. */
+export interface TestTopupObservation {
+  topupId: string;
+  platformAccountId: string;
+  status: "succeeded" | "pending" | "failed" | "canceled" | "reversed";
+  amountCents: number;
+  currency: string;
+  balanceTransactionId: string | null;
+}
+
 export interface TestFundingProvider {
   verifyTestTopup(topupId: string): Promise<TestTopupReceipt>;
+  inspectTestTopup(topupId: string): Promise<TestTopupObservation>;
 }

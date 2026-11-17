@@ -1,5 +1,5 @@
 /** Stripe REST adapter: hard-locked to test API keys. No live transfer path. */
-import type { PaymentProvider, ProviderTransfer, TransferInstruction, TestFundingProvider, TestTopupReceipt } from "../provider.js";
+import type { PaymentProvider, ProviderTransfer, TransferInstruction, TestFundingProvider, TestTopupReceipt, TestTopupObservation } from "../provider.js";
 
 const BASE = "https://api.stripe.com/v1";
 
@@ -55,6 +55,28 @@ export class StripeTestClient implements PaymentProvider, TestFundingProvider {
     return account.id;
   }
 
+  /** Read-only state inspection; can report a reversal without crediting it again. */
+  async inspectTestTopup(topupId: string): Promise<TestTopupObservation> {
+    if (!/^tu_[A-Za-z0-9]+$/.test(topupId)) throw new Error("Invalid Stripe test top-up ID");
+    const topup = await this.request<{
+      id: unknown; object: unknown; amount: unknown; currency: unknown;
+      status: unknown; livemode: unknown; balance_transaction: unknown;
+    }>("GET", `/topups/${topupId}`);
+    if (topup.id !== topupId || topup.object !== "topup" || topup.livemode !== false ||
+      typeof topup.currency !== "string" ||
+      !["succeeded", "pending", "failed", "canceled", "reversed"].includes(String(topup.status)) ||
+      typeof topup.amount !== "number" || !Number.isSafeInteger(topup.amount) || topup.amount <= 0 ||
+      (topup.balance_transaction !== null && typeof topup.balance_transaction !== "string")) {
+      throw new Error("Stripe TEST top-up inspection returned invalid evidence");
+    }
+    return {
+      topupId, platformAccountId: await this.platformAccountId(),
+      status: topup.status as TestTopupObservation["status"],
+      currency: topup.currency, amountCents: topup.amount,
+      balanceTransactionId: topup.balance_transaction,
+    };
+  }
+
   /** Read-only verification; this does NOT create a top-up or claim project ownership. */
   async verifyTestTopup(topupId: string): Promise<TestTopupReceipt> {
     if (!/^tu_[A-Za-z0-9]+$/.test(topupId)) throw new Error("Invalid Stripe test top-up ID");
@@ -70,9 +92,9 @@ export class StripeTestClient implements PaymentProvider, TestFundingProvider {
         !/^txn_[A-Za-z0-9]+$/.test(topup.balance_transaction)) {
       throw new Error("Stripe receipt is not a succeeded USD TEST top-up with balance evidence");
     }
-    const platformAccountId = await this.platformAccountId();
     return {
-      topupId, platformAccountId, balanceTransactionId: topup.balance_transaction,
+      topupId, platformAccountId: await this.platformAccountId(),
+      balanceTransactionId: topup.balance_transaction,
       amountCents: topup.amount, currency: "usd",
     };
   }

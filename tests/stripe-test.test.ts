@@ -100,3 +100,33 @@ describe("Stripe TEST top-up receipt verification", () => {
       .rejects.toThrow(/identity/);
   });
 });
+
+
+describe("Stripe TEST top-up reversal inspection", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("returns a reversed receipt without regarding it as new funding", async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({
+      id: "tu_reversed123", object: "topup", status: "reversed", livemode: false,
+      amount: 500, currency: "usd", balance_transaction: null,
+    }), { status: 200 })).mockResolvedValueOnce(new Response(JSON.stringify({
+      id: "acct_platform123", object: "account",
+    }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const observation = await new StripeTestClient("sk_test_example").inspectTestTopup("tu_reversed123");
+    expect(observation).toEqual({
+      topupId: "tu_reversed123", platformAccountId: "acct_platform123",
+      status: "reversed", amountCents: 500, currency: "usd", balanceTransactionId: null,
+    });
+    expect(fetchMock.mock.calls.every((x) => x[1]?.method === "GET")).toBe(true);
+  });
+
+  it("rejects a live-mode receipt during inspection", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({
+      id: "tu_reversed123", object: "topup", status: "reversed", livemode: true,
+      amount: 500, currency: "usd", balance_transaction: null,
+    }), { status: 200 })));
+    await expect(new StripeTestClient("sk_test_example").inspectTestTopup("tu_reversed123"))
+      .rejects.toThrow(/invalid evidence/);
+  });
+});

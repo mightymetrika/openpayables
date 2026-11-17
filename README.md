@@ -2,13 +2,13 @@
 
 A reusable TypeScript/PostgreSQL package for verified open-source contribution credits, contributor voting, and deterministic revenue-sharing **with actual monetary payment capability as the project goal**.
 
-**Status:** Checkpoint A and B accepted; C1 validated and pushed on `development` at `23a24ce`; C2 Stripe TEST funding-receipt attribution and duplicate-import rejection validated locally on 2026-11-17 (pending commit on `development`). First Stripe Connect TEST transfer independently verified on 2026-11-17. No live payment capability is enabled. No blindstats or randomplayables databases or applications are modified.
+**Status:** Checkpoints A and B accepted; C1/C2 committed to `development` at `170e999`; C3 TEST receipt-reversal/shared-platform safeguards locally validated on 2026-11-17 (commit pending). First Stripe Connect TEST transfer independently verified on 2026-11-17. No live payment capability is enabled. No blindstats or randomplayables databases or applications are modified.
 
 ## Delivered
 - Contribution credits: project-scoped contributors, configurable categories, manually approved 1/3/8 point events, append-only reversals, deduplication.
 - Governance: immutable weighted ballots with voting weights frozen when a proposal opens.
 - Deterministic distribution: integer-cent allocation with largest-remainder rounding, locked point snapshots, no credit consumption.
-- TEST funding: project-specific operator attestations (legacy) or separately verified Stripe TEST top-up receipts; never mixed within a project. Provider top-up evidence is uniquely assigned to one project; reservation checks prevent overspending project records.
+- TEST funding: project-specific operator attestations (legacy) or separately verified Stripe TEST top-up receipts; never mixed within a project. Provider evidence is uniquely assigned to one project; C3 adds sticky reversal holds and shared-platform commitment checks.
 - Monetary obligations: paid or held per recipient, independently of other contributors; duplicate sends blocked.
 - Stripe Connect TEST adapter: Express onboarding, account readiness, transfers, status reconciliation, transfer-reversal detection, verified webhook receipt, no live keys.
 
@@ -102,6 +102,8 @@ npm run cli -- stripe balance
 # Reuse a previously created, succeeded Stripe TEST top-up ID (tu_...).
 # This only imports/attributes evidence; it DOES NOT create new funds.
 npm run cli -- fund import-topup new-project tu_EXISTING_TEST_TOPUP
+# C3: read-only recheck of all imported top-ups on the same Stripe TEST platform.
+npm run cli -- fund recheck new-project
 npm run cli -- fund status new-project
 ```
 
@@ -118,11 +120,13 @@ npm run webhook:dev
 
 Webhook signatures are validated against the original bytes with a five-minute timestamp tolerance. Only TEST-mode transfer events are recorded; duplicate provider event IDs are ignored.
 
-## Checkpoint C1 — TEST-mode available-balance preflight (development patch)
+## Checkpoint C3 — funding-reversal audit and shared-platform liquidity (locally accepted)
 
-The next vertical slice adds a read-only `npm run cli -- stripe balance` command and checks Stripe's available USD **test** balance before `payment send` reserves an immutable attempt. If funds are insufficient or Stripe's balance response cannot be verified as test-mode, the `ready` obligation is left unchanged with no send attempt. Do not rerun a transfer with uncertain outcome: `unknown` still requires reconciliation.
+C3 adds a read-only `fund recheck <project-id>` command and an **immutable** audit alert when a previously imported Stripe TEST top-up is no longer the same succeeded funding receipt. Alerted cents are subtracted from `remainingCents`, but frozen obligations are retained for investigation. Once flagged, a receipt is not automatically restored to usable funding merely because a later API call reports success. A network failure blocks preflight instead of being recorded as a confirmed reversal.
 
-This balance preflight does **not** reserve funds at Stripe, prove project-specific receipts, or substitute for project cash accounting, taxes, compliance, or provider approval. The local operator-attested test ledger remains separate. Live keys remain forbidden. Validate this patch on `development` before treating C1 as accepted.
+For projects funded by verified TEST receipts, approval and send automatically check provider receipts. New allocations must fit both project funding and total verified funds **not already committed across the same Stripe platform**. Before sending, OpenPayables checks that the platform can cover all outstanding verified-project obligations and serializes its own concurrent sends. Legacy operator-attested projects remain outside this attribution. External Stripe activity can still change available funds, and this is not proof of unspent app revenue or bank settlement.
+
+**C3 local acceptance (2026-11-17):** Following fixes for integration-test fixture isolation and lock-cleanup lint, the development migration succeeded; **8 PostgreSQL integration tests**, **29 unit tests**, ESLint and TypeScript build passed. The existing Stripe TEST project `openpayables-c2-verified-0c89cbaf` was rechecked against platform `acct_1Ucqb8PGvHvd36JR`: one receipt checked, zero new problems and zero blocked receipts. Its funding remained 500 verified TEST cents, 0 blocked, 0 reserved, 500 remaining. No additional Stripe top-up or transfer was made. The receipt-reversal scenarios were exercised with test doubles, not a deliberately reversed live Stripe sandbox receipt. C3 acceptance documentation is ready to commit to `development`; **live keys remain prohibited**.
 
 ## Boundaries and continuity
 

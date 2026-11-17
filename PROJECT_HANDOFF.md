@@ -1,10 +1,10 @@
 # OpenPayables — Project Handoff
 
 **Date:** 2026-11-17 (US Pacific)
-**Current version:** Checkpoint B ACCEPTED on `main`; Checkpoint C1 COMMITTED at `23a24ce` on `development`; Checkpoint C2 Stripe TEST funding receipt import LOCALLY VALIDATED and sandbox acceptance PASSED (not yet committed).
-**Git baseline:** `28a79a4` on `main` (Checkpoint B accepted); `23a24ce` on `development` (Checkpoint C1 verified, pushed 2026-11-17).
+**Current version:** Checkpoints A, B, C1 and C2 committed; C3 financial safeguards VALIDATED LOCALLY, acceptance documentation prepared for commit.
+**Git baseline:** `28a79a4` on `main` (Checkpoint B); `170e999` on `development` (Checkpoint C2 verified and pushed 2026-11-17).
 **Remote:** https://github.com/mightymetrika/openpayables
-**Working branch:** `development` at `23a24ce`, with uncommitted C2 changes ready for final documentation update and Git checkpoint. Do not change blindstats.
+**Working branch:** `development` at `170e999`, C3 changes applied and uncommitted as of acceptance. Do not change blindstats.
 
 ## Checkpoint A — validated
 
@@ -48,7 +48,7 @@ Validated on Windows 11, Node 24.19.0, PostgreSQL 17 using PowerShell 5.1:
 - New unit tests exercise available-versus-pending balances, test-mode rejection and malformed balances. An expanded PostgreSQL finance integration test asserts zero payment attempts when balance is insufficient.
 - On Windows PowerShell 5.1, `npm run check`: **18 unit tests**, clean ESLint and build; `npm run test:integration`: **6 PostgreSQL tests**. C1 committed and pushed to `development` as `23a24ce`; working tree clean. `main` deliberately remains at `28a79a4`.
 
-## Checkpoint C2 — Stripe TEST top-up source attribution (VALIDATED, NOT YET COMMITTED)
+## Checkpoint C2 — Stripe TEST top-up source attribution (VALIDATED, COMMITTED)
 
 - New migration `sql/003_checkpoint_c2.sql`: each TEST funding event identifies either an existing operator attestation or a provider-verified TEST receipt. Stripe account + top-up ID can be attributed to only **one** project. Historical attestations remain intact.
 - `fund import-topup <project-id> <tu_...>` reads a previously created Stripe TEST top-up and validates ID, `livemode=false`, `status=succeeded`, USD, positive integer cents, Stripe balance transaction and authenticated platform account ID. This command **does not create top-ups or move money**.
@@ -66,10 +66,28 @@ Validated on Windows 11, Node 24.19.0, PostgreSQL 17 using PowerShell 5.1:
 
 **Limitations:** A provider-confirmed top-up shows a test funding event, **not** the app's actual subscription revenue, funds beneficially owned by the named OpenPayables project, or cash free of other platform liabilities. A top-up could be reversed or used elsewhere later. Later work must recheck/reconcile evidence and reservations across projects and assess provider/legal/tax requirements. Stripe LIVE keys and bank-payout features remain disabled.
 
-## Immediate next action — preserve momentum
+## Checkpoint C3 — receipt-reversal holds and shared-platform commitments (LOCALLY VALIDATED; COMMIT PENDING)
 
-1. Apply the path-preserving **C2 acceptance documentation-only** patch (this file and `README.md`) on `development` at `23a24ce`, preserving the already validated C2 source/migration/test changes.
-2. Stage the ten C2 files (`PROJECT_HANDOFF.md`, `README.md`, `sql/003_checkpoint_c2.sql`, and seven TypeScript source/test files); `git diff --cached --check`; commit and push **`development` only**. Keep `main` on Checkpoint B `28a79a4`.
-3. Proceed to the next narrow Checkpoint C slice: test receipt reversals/changes and reconcile project-level reservations against funds already committed across the Stripe platform. Do **not** assume a verified top-up is unspent or enable live payments without provider/legal/tax clearance.
+- Forward migration `sql/004_checkpoint_c3.sql` creates an **immutable funding receipt alert** per imported receipt. An observed reversal, status/amount/currency/transaction change, or platform mismatch creates a lasting alert. No existing original receipt or frozen distribution is silently rewritten. There is **no automatic alert clearing**: resolving a shortfall requires a separately reviewed corrective procedure.
+- `fund recheck <project-id>` makes read-only Stripe TEST API calls for **every imported receipt assigned to that same Stripe TEST platform**. It returns receipt counts and persistent alert counts, without creating money or transfers. Network/API failure stops inspection rather than presuming a reversal.
+- For verified-receipt projects, `distribution approve` now **rechecks Stripe receipts automatically**, excludes alerted receipts from usable funding, and considers **all approved allocation commitments across projects on the same platform**, serialized with an advisory lock. Existing attested-test projects retain their prior behavior.
+- Verified-project `payment send` also rechecks platform receipts, confirms the platform funding ledger is solvent, and compares available USD balance against **all unpaid/uncertain obligations** for the same platform, not just one requested transfer. The preflight and external transfer are serialized for verified projects using a PostgreSQL advisory session lock. No failed preflight reserves a payment attempt.
+- `fund status` adds `blockedVerifiedCents`; `remainingCents` can become **negative** after a funding reversal because existing obligations remain intact. A negative balance is a financial exception, not permission to remove or reallocate obligations.
+- The automatic checks are scoped to OpenPayables **verified TEST** projects sharing the same Stripe account and database. Other platform activity and legacy **operator-attested** TEST projects cannot be fully attributed. The checks do **not** constitute a reservation at Stripe, prove project ownership, or track bank settlement. No live payment key/path exists.
+### Acceptance evidence — 2026-11-17
 
-Local operator databases: `127.0.0.1:5432/openpayables` (development) and `127.0.0.1:5432/openpayables_test` (dedicated test). Configure secrets via PowerShell environment variables or ignored local files. Never commit Stripe secrets, actual DB passwords or onboarding links. The CLI is a trusted local operator tool, not an authenticated public API. Do not modify blindstats or randomplayables apps or databases.
+- Development database forward migration completed successfully. The initial C3 validation detected two failing PostgreSQL integration tests caused by reused fake Stripe platform IDs in persistent test data; unique fake platform IDs corrected the test isolation. A separate `no-unsafe-finally` ESLint issue was corrected in transfer lock cleanup. The final corrected C3 code passed **8/8 PostgreSQL integration tests**, **29/29 unit tests**, ESLint and the TypeScript build; `git diff --check` passed (Windows LF/CRLF informational warnings only).
+- With the Stripe TEST key, `fund recheck openpayables-c2-verified-0c89cbaf` returned platform `acct_1Ucqb8PGvHvd36JR`, `checked = 1`, `newlyObservedProblems = 0`, and `blockedReceipts = 0`.
+- `fund status` for that project returned `attestedCents = 0`, `verifiedTestCents = 500`, `blockedVerifiedCents = 0`, `reservedCents = 0`, and `remainingCents = 500`.
+- No new top-up or Stripe transfer was created during this C3 acceptance. The reversal/overcommit behavior was verified by automated tests using fake provider observations, **not** by intentionally reversing a real Stripe sandbox receipt.
+- C3 is locally accepted but **not yet committed** as of this documentation update. Commit/push `development` only after staging all C3 files; `main` remains at `28a79a4`.
+
+
+## Immediate next action
+
+1. Stage the 10 validated C3 files, including this updated handoff and `README.md`; run `git diff --cached --check`, commit and push **development only**. Confirm a clean working tree and the new `origin/development` commit.
+2. Keep `main` on `28a79a4` until a deliberate tested-release promotion.
+3. Move into the mandatory live-payment gate: confirm Stripe/Connect business-model approval and account ownership, contributor classification/terms, jurisdiction and tax requirements, funding ownership/net distributable amounts, secure operator controls and recovery/settlement requirements. Keep live credentials disabled until the gate is satisfied.
+4. Build and validate a minimal separately controlled LIVE transfer and settlement path, then execute one small, properly funded and authorized real-money payout with reconciliation; do not change blindstats production.
+
+Local operator databases: `127.0.0.1:5432/openpayables` (development) and `127.0.0.1:5432/openpayables_test` (dedicated test). Keep all secrets outside Git/chat. This is still a trusted local CLI, not an authenticated public API. Do not modify blindstats or randomplayables production apps or databases.

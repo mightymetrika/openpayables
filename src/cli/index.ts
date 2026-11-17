@@ -6,7 +6,7 @@ import type { VoteChoice } from "../core/voting.js";
 import { OpenPayablesFinance } from "../storage/postgres/finance.js";
 import { StripeTestClient } from "../payments/stripe/test-client.js";
 
-const HELP = `OpenPayables Checkpoint C2 — local operator CLI
+const HELP = `OpenPayables Checkpoint C3 — local operator CLI
   project create <project-id> <name>
   contributor create <contributor-id> <display-name>
   project join <project-id> <contributor-id>
@@ -21,6 +21,7 @@ const HELP = `OpenPayables Checkpoint C2 — local operator CLI
   proposal close <proposal-uuid>
   fund add <project-id> <cents> <funding-reference>    (TEST attestation only)
   fund import-topup <project-id> <stripe-tu-id>         (TEST Stripe receipt; no top-up created)
+  fund recheck <project-id>                             (recheck TEST receipts across same platform)
   fund status <project-id>
   distribution create <project-id> <period-label> <cents>
   distribution approve <period-uuid>
@@ -93,12 +94,17 @@ async function main() {
         required(args, 2);
         result = await finance.importTestTopup(args[0]!, args[1]!, new StripeTestClient(), operator());
         break;
+      case "fund recheck":
+        required(args, 1); result = await finance.recheckProjectTestFunding(args[0]!, new StripeTestClient(), operator()); break;
       case "fund status":
         required(args, 1); result = await finance.fundingStatus(args[0]!); break;
       case "distribution create":
         required(args, 3); result = await finance.createPeriod(args[0]!, args[1]!, Number(args[2]), operator()); break;
       case "distribution approve":
-        required(args, 1); result = await finance.approvePeriod(args[0]!, operator()); break;
+        required(args, 1);
+        result = await finance.approvePeriod(args[0]!, operator(),
+          (await finance.verifiedPlatformForPeriod(args[0]!)) ? new StripeTestClient() : undefined);
+        break;
       case "distribution show":
         required(args, 1); result = await finance.showPeriod(args[0]!); break;
       case "stripe balance":
