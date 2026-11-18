@@ -2,11 +2,11 @@
 
 A reusable TypeScript/PostgreSQL package for verified open-source contribution credits, contributor voting, and deterministic revenue-sharing **with actual monetary payment capability as the project goal**.
 
-**Status:** Checkpoints A through C6 validated locally. C5 was committed and pushed to `development` as `3699855`; C6 read-only automatic-payout trace passed Windows tests and is staged for commit. The first Stripe Connect TEST transfer was independently verified on 2026-11-17. No live payment capability is enabled. No blindstats or randomplayables databases or applications are modified.
+**Status:** Checkpoints A through C6 validated and committed to `development` (`e5c69c3`). C7 GitHub discovery passed Windows acceptance on 2026-11-18 and is staged for commit. The first Stripe Connect TEST transfer was independently verified on 2026-11-17. No live payment capability is enabled. No blindstats or randomplayables databases or applications are modified.
 
 ## Operator-owned Stripe model (C4 — validated and committed)
 
-**OpenPayables is software, not a shared payments intermediary.** Each independent paying business/project operator uses its **own Stripe account and own funds** for its contributors. Mightymetrika's Stripe account is for Mightymetrika's own projects/testing, not for paying other operators' contributors. Recipient onboarding occurs under that operator's Stripe Connect configuration; future OpenPayables SaaS subscription income is entirely separate from customer project funds.
+**OpenPayables is software, not a shared payments intermediary.** Each independent paying business/project operator uses its **own Stripe account and own funds** for its contributors. Mightymetrika's Stripe account is for Mightymetrika's own projects/testing, not for paying other operators' contributors. Recipient onboarding occurs under that operator's Stripe Connect configuration; OpenPayables itself is intended as free, reusable open-source infrastructure; any subscription income belongs to separately monetized adopting projects, and operators remain responsible for their own funds.
 
 C4 records an immutable, TEST-mode project-to-Stripe account binding (Stripe `acct_...` ID only) and prevents preparation, sending or reconciliation with another account's credentials. Imported verified-test funding automatically binds its authenticated account; attested-only projects require `stripe platform bind <project-id>`. Existing unbound attested projects with historical attempts require manual review, not silent rebinding. **This is still a dedicated local single-operator CLI.** It has no tenant authentication, secure hosted Stripe OAuth/restricted-key workflow or multi-tenant webhook routing; do not run it for unrelated clients from one shared service.
 
@@ -28,9 +28,10 @@ C6 adds `payout trace <obligation-uuid> <stripe-po-id>`. It verifies the stored 
 
 **C6 acceptance (2026-11-17):** 51 unit tests, 11 dedicated PostgreSQL integration tests, ESLint, TypeScript build, and staged whitespace validation all passed. The existing synthetic Stripe TEST recipient has no known `po_...` bank payouts, so the new trace command was tested with mocks; no provider payout was created, no obligation was marked bank-settled, and no LIVE path was enabled.
 
-**Next MVP workstream (C7): GitHub contribution evidence.** OpenPayables already accepts manually approved GitHub-linked credit awards and converts credit balances into dollar obligations using an approved funded pool. It does **not** yet discover merged PRs and reviews from GitHub or queue them for approval. C7 adds read-only public-repository discovery and explicit human review before points are awarded. Do not substitute lines changed or commit counts for approved contribution quality; GitHub discovery never initiates payment. See `docs/GITHUB_EVIDENCE_MVP_PLAN_v0.1.md`.
+**C7 implementation (Windows accepted; commit pending): GitHub contribution discovery.** OpenPayables already manually approves credits and converts credit balances into dollar obligations using a separately approved project pool. C7 adds **read-only public GitHub source registration**, merged-PR author/reviewer candidate collection and a **local, immutable review queue**. It does not approve or score candidates (that is C8), link GitHub users to payment identities, or initiate money movement. See `docs/GITHUB_DISCOVERY_v0.1.md` and `docs/GITHUB_EVIDENCE_MVP_PLAN_v0.1.md`.
 
 ## Delivered
+- GitHub evidence intake (C7 accepted): public repository registration, read-only bounded PR/review discovery, immutable candidates; no automatic credits or payments.
 - Contribution credits: project-scoped contributors, configurable categories, manually approved 1/3/8 point events, append-only reversals, deduplication.
 - Governance: immutable weighted ballots with voting weights frozen when a proposal opens.
 - Deterministic distribution: integer-cent allocation with largest-remainder rounding, locked point snapshots, no credit consumption.
@@ -106,6 +107,22 @@ npm run cli -- distribution approve PERIOD_UUID
 npm run cli -- distribution show PERIOD_UUID
 ```
 
+## C7 public GitHub discovery (read-only; Windows accepted)
+
+After applying migration `007_checkpoint_c7`, with the operator environment configured, use an isolated local project and a public GitHub repository:
+
+```powershell
+npm run cli -- project create c7-discovery 'C7 public GitHub intake'
+npm run cli -- github source add c7-discovery mightymetrika/openpayables
+npm run cli -- github source list c7-discovery
+npm run cli -- github sync c7-discovery mightymetrika/openpayables 2026-11-01
+npm run cli -- github candidates c7-discovery
+```
+
+**C7 acceptance (2026-11-18):** The development migration, **61 unit tests**, **15 dedicated PostgreSQL integration tests**, lint, build, and staged whitespace checks passed. A read-only scan of public `mightymetrika/openpayables` in isolated project `openpayables-c7-8dcd0ee2` succeeded and returned **zero qualifying candidates** for the period beginning 2026-11-01. The empty queue was confirmed; this is a successful empty scan, not a live demonstration of positive PR ingestion. No credit awards, payment obligations or Stripe operations were created. C7 is staged but not yet committed.
+
+`since` is a UTC **merge-date** lower bound, not a review-date bound. The scan is bounded and rejects incomplete pagination rather than claiming completeness. Public GitHub activity requires no token; `OPENPAYABLES_GITHUB_TOKEN` is optional for higher limits and must not be committed. New evidence is stored without changing credit balances or any Stripe data. C8 will implement explicit approval and contributor identity mapping. See `docs/GITHUB_DISCOVERY_v0.1.md`.
+
 ## Read-only connected-bank-payout inspection (C5 TEST)
 
 After `npm run db:migrate`, with a project bound to the current Stripe TEST platform and a contributor assigned an existing connected-account destination:
@@ -172,4 +189,4 @@ For projects funded by verified TEST receipts, approval and send automatically c
 
 The CLI is a trusted **single-operator local tool**, not an authenticated public API or a multi-tenant hosted service. No Stripe test transfer can be attempted without a Stripe TEST credential, an enabled connected account, an approved and funded distribution period, and explicit operator execution. Financial data is stored in the `openpayables` PostgreSQL schema; no Supabase, Prisma, Clerk or Next.js coupling.
 
-Use `PROJECT_HANDOFF.md` for the current checkpoint. See `docs/MVP_SPEC_v0.1.md` for the MVP policy. The first reconciled Stripe TEST transfer has now been demonstrated. The immediate next implementation milestone is C7 GitHub evidence ingestion with an operator-approved credit award pathway, while live settlement and compliance review continue separately. This does not justify a frontend, tax service, automated per-line compensation, or blindstats integration.
+Use `PROJECT_HANDOFF.md` for the current checkpoint. See `docs/MVP_SPEC_v0.1.md` for the MVP policy. The first reconciled Stripe TEST transfer has now been demonstrated. The immediate next milestone is committing accepted C7 on `development`, followed by C8 identity linking and explicit operator approval of candidates for credit awards, while live Stripe eligibility review continues independently. This does not justify a frontend, tax service, automated per-line compensation, or blindstats integration.

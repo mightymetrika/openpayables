@@ -10,6 +10,7 @@ const migrations = [
   { version: "004_checkpoint_c3", url: new URL("../../../sql/004_checkpoint_c3.sql", import.meta.url) },
   { version: "005_checkpoint_c4", url: new URL("../../../sql/005_checkpoint_c4.sql", import.meta.url) },
   { version: "006_checkpoint_c5", url: new URL("../../../sql/006_checkpoint_c5.sql", import.meta.url) },
+  { version: "007_checkpoint_c7", url: new URL("../../../sql/007_checkpoint_c7.sql", import.meta.url) },
 ];
 
 export async function migrate(pool: Pool): Promise<void> {

@@ -5,8 +5,14 @@ import type { AwardSize } from "../core/credits.js";
 import type { VoteChoice } from "../core/voting.js";
 import { OpenPayablesFinance } from "../storage/postgres/finance.js";
 import { StripeTestClient } from "../payments/stripe/test-client.js";
+import { GitHubPublicClient, parseMaxPages, parsePublicRepository, parseSince } from "../github/discovery.js";
+import { OpenPayablesGitHub } from "../storage/postgres/github.js";
 
-const HELP = `OpenPayables Checkpoint C6 — one operator-owned Stripe TEST platform per project
+const HELP = `OpenPayables Checkpoint C7 — one operator-owned Stripe TEST platform per project
+  github source add <project-id> <owner/repo>          (public, read-only; verifies repository)
+  github source list <project-id>
+  github sync <project-id> <owner/repo> <since-YYYY-MM-DD> [max-pr-pages]
+  github candidates <project-id> [offset]            (local evidence queue, no points)
   project create <project-id> <name>
   contributor create <contributor-id> <display-name>
   project join <project-id> <contributor-id>
@@ -61,10 +67,38 @@ async function main() {
   const pool = createPool();
   const store = new OpenPayablesStore(pool);
   const finance = new OpenPayablesFinance(pool);
+  const github = new OpenPayablesGitHub(pool);
   try {
     let result: unknown;
     const key = `${group} ${command}`;
     switch (key) {
+      case "github source":
+        if (args[0] === "add") {
+          required(args, 3); operator();
+          const publicClient = new GitHubPublicClient();
+          result = await github.registerSource(args[1]!, await publicClient.repository(args[2]!), operator());
+        } else if (args[0] === "list") {
+          required(args, 2); result = await github.sources(args[1]!);
+        } else throw new Error(HELP);
+        break;
+      case "github sync": {
+        if (args.length !== 3 && args.length !== 4) throw new Error(HELP);
+        operator();
+        parsePublicRepository(args[1]!);
+        const since = parseSince(args[2]!);
+        const maxPages = parseMaxPages(args[3]);
+        const saved = await github.requireSource(args[0]!, args[1]!);
+        const publicClient = new GitHubPublicClient();
+        const current = await publicClient.repository(saved.fullName);
+        if (current.id !== saved.id) throw new Error("GitHub source ID mismatch; refusing import");
+        const found = await publicClient.discover(current, since, maxPages);
+        result = { ...(await github.importCandidates(args[0]!, current, found)),
+          sinceUtc: since, maxPages };
+        break;
+      }
+      case "github candidates":
+        if (args.length !== 1 && args.length !== 2) throw new Error(HELP);
+        result = await github.candidates(args[0]!, args[1] === undefined ? 0 : Number(args[1])); break;
       case "project create":
         required(args, 2); result = await store.createProject(args[0]!, args[1]!, operator()); break;
       case "contributor create":
