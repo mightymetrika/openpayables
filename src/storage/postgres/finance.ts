@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { Pool, PoolClient } from "pg";
 import { allocateCents } from "../../core/allocation.js";
-import type { PaymentProvider, ProviderTransfer, TransferInstruction, TestFundingProvider, TestTopupReceipt, TestTopupObservation, TestConnectedPayoutProvider, TestPayoutStatus } from "../../payments/provider.js";
+import type { PaymentProvider, ProviderTransfer, TransferInstruction, TestFundingProvider, TestTopupReceipt, TestTopupObservation, TestConnectedPayoutProvider, TestPayoutStatus, TestPayoutTraceProvider } from "../../payments/provider.js";
 
 function nonblank(value: string, label: string): string {
   if (typeof value !== "string" || !value.trim()) throw new Error(`${label} must be nonblank`);
@@ -659,6 +659,71 @@ export class OpenPayablesFinance {
       if (o.status !== next || !o.transferId) await this.recordEvent(db, id, next, `Verified Stripe TEST webhook ${eventId}`);
       return { duplicate: false, updated: true };
     });
+  }
+
+  /** Read-only Stripe evidence that a frozen transfer is included in a specific automatic payout.
+   * Does not assert irrevocable bank settlement and never changes an obligation.
+   */
+  async traceAutomaticPayoutForObligation(
+    obligationId: string, payoutId: string, provider: TestPayoutTraceProvider,
+  ) {
+    const o = await this.getObligation(obligationId);
+    if (o.status !== "transferred" || !o.transferId || !o.connectedAccountId) {
+      throw new Error("Only a non-reversed transferred obligation can be traced to a payout");
+    }
+    const platformAccountId = await this.assertTestPlatform(o.projectId, provider);
+    const transfer = await provider.retrieveTransfer(o.transferId);
+    if (transfer.id !== o.transferId || transfer.livemode !== false ||
+      transfer.destination !== o.connectedAccountId || transfer.amount !== o.amountCents ||
+      transfer.currency !== "usd" || transfer.amount_reversed !== 0 ||
+      transfer.metadata?.obligation_id !== o.id || transfer.metadata?.project_id !== o.projectId ||
+      transfer.metadata?.period_id !== o.periodId) {
+      throw new Error("Stripe TEST transfer identity/reversal evidence is inconsistent; trace refused");
+    }
+    const paymentId = transfer.destination_payment;
+    const base = {
+      obligationId, projectId: o.projectId, contributorId: o.contributorId,
+      platformAccountId,
+      connectedAccountId: o.connectedAccountId, transferId: o.transferId,
+      destinationPaymentId: paymentId ?? null, payoutId,
+      individualObligationsSettled: 0,
+      note: "Read-only attribution snapshot. Stripe payout paid can later fail; bank receipt is not irrevocable.",
+    };
+    if (typeof paymentId !== "string" || !/^py_[A-Za-z0-9]+$/.test(paymentId)) {
+      return { ...base, inclusion: "destination_payment_unavailable", payoutStatus: null };
+    }
+    const evidence = await provider.inspectPayoutComposition(o.connectedAccountId, payoutId, paymentId);
+    if (evidence.payoutId !== payoutId || evidence.connectedAccountId !== o.connectedAccountId ||
+      !Number.isSafeInteger(evidence.amountCents) || evidence.amountCents <= 0 ||
+      typeof evidence.currency !== "string" || !/^[a-z]{3}$/.test(evidence.currency) ||
+      !["pending", "in_transit", "paid", "failed", "canceled"].includes(evidence.payoutStatus) ||
+      !["completed", "in_progress", "not_applicable"].includes(evidence.reconciliationStatus) ||
+      !Array.isArray(evidence.matchingEntries)) {
+      throw new Error("Stripe payout trace provider returned inconsistent evidence");
+    }
+    let inclusion: string;
+    if (!evidence.automatic || evidence.reconciliationStatus === "not_applicable") {
+      inclusion = "not_attributable_manual_or_unsupported";
+    } else if (evidence.reconciliationStatus !== "completed") {
+      inclusion = "reconciliation_pending";
+    } else if (evidence.matchingEntries.length === 0) {
+      inclusion = "not_in_this_payout";
+    } else if (evidence.matchingEntries.length === 1 &&
+      evidence.matchingEntries[0]!.currency === "usd" &&
+      evidence.matchingEntries[0]!.amountCents === o.amountCents &&
+      /^txn_[A-Za-z0-9]+$/.test(evidence.matchingEntries[0]!.id)) {
+      inclusion = "included_in_automatic_payout";
+    } else {
+      inclusion = "amount_or_duplicate_evidence_requires_review";
+    }
+    return {
+      ...base, inclusion,
+      payoutStatus: evidence.payoutStatus,
+      payoutAutomatic: evidence.automatic,
+      reconciliationStatus: evidence.reconciliationStatus,
+      matchedBalanceTransactionIds: evidence.matchingEntries.map((x) => x.id),
+      bankPayoutReportedPaid: inclusion === "included_in_automatic_payout" && evidence.payoutStatus === "paid",
+    };
   }
 
   /**

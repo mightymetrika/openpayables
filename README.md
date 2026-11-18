@@ -2,7 +2,7 @@
 
 A reusable TypeScript/PostgreSQL package for verified open-source contribution credits, contributor voting, and deterministic revenue-sharing **with actual monetary payment capability as the project goal**.
 
-**Status:** Checkpoints A through C5 validated locally. C4 documentation was finalized on `development` as `d03c455`; C5 passed Windows tests and Stripe TEST read-only acceptance on 2026-11-17, **pending Git commit/push**. The first Stripe Connect TEST transfer was independently verified on 2026-11-17. No live payment capability is enabled. No blindstats or randomplayables databases or applications are modified.
+**Status:** Checkpoints A through C6 validated locally. C5 was committed and pushed to `development` as `3699855`; C6 read-only automatic-payout trace passed Windows tests and is staged for commit. The first Stripe Connect TEST transfer was independently verified on 2026-11-17. No live payment capability is enabled. No blindstats or randomplayables databases or applications are modified.
 
 ## Operator-owned Stripe model (C4 — validated and committed)
 
@@ -18,7 +18,17 @@ C5 introduces `payout sync <project-id> <contributor-id>` and `payout show <proj
 
 **These are connected-account-level records.** A Stripe bank payout may combine several transfers or other funds. Even if Stripe reports an account's payout as `paid`, OpenPayables **does not mark any individual payment obligation bank-settled**. No payout creation, new top-up, transfer or LIVE key is involved. See `docs/BANK_PAYOUT_OBSERVATION_v0.1.md`.
 
-**C5 acceptance (2026-11-17):** development migration passed; **10/10 PostgreSQL integration tests**, **40/40 unit tests**, ESLint, TypeScript build, and staged whitespace check passed. Using a separate local project `openpayables-c5-observation-879152d9`, two successful read-only Stripe sandbox payout syncs for the already-onboarded synthetic Alice account each returned **zero payouts and zero bank-settled obligations**; the local audit remained empty and no duplicate observations were created. C5 is validated but pending Git commit. Stripe has acknowledged the operator-owned eligibility inquiry by email; approval is **not** received.
+**C5 acceptance (2026-11-17):** development migration passed; **10/10 PostgreSQL integration tests**, **40/40 unit tests**, ESLint, TypeScript build, and staged whitespace check passed. Using a separate local project `openpayables-c5-observation-879152d9`, two successful read-only Stripe sandbox payout syncs for the already-onboarded synthetic Alice account each returned **zero payouts and zero bank-settled obligations**; the local audit remained empty and no duplicate observations were created. C5 is committed at `3699855`. Stripe has acknowledged the operator-owned eligibility inquiry by email; approval is **not** received.
+
+## Checkpoint C6 — automatic bank-payout composition (VALIDATED; TEST ONLY)
+
+C6 adds `payout trace <obligation-uuid> <stripe-po-id>`. It verifies the stored **transferred** obligation, the bound Stripe TEST platform, and the provider's transfer destination payment (`py_...`). It then queries a **specified** connected-account payout. For **completed, standard automatic payouts**, Stripe's payout-scoped Balance Transactions API can confirm that this destination payment appears among the payout's components. The command reports `included_in_automatic_payout`, `not_in_this_payout`, `reconciliation_pending`, or `not_attributable_manual_or_unsupported`, with explicit evidence and payout status.
+
+**No money moves, and no obligations are marked bank-settled.** A `paid` payout may later fail; a manual or instant payout may not expose component attribution. A zero-payout sandbox history means there is no existing `po_...` to trace, so **do not create a new payout merely to run this check**. The method is GET-only and refuses incomplete/malformed provider data. See `docs/AUTOMATIC_PAYOUT_TRACE_v0.1.md`.
+
+**C6 acceptance (2026-11-17):** 51 unit tests, 11 dedicated PostgreSQL integration tests, ESLint, TypeScript build, and staged whitespace validation all passed. The existing synthetic Stripe TEST recipient has no known `po_...` bank payouts, so the new trace command was tested with mocks; no provider payout was created, no obligation was marked bank-settled, and no LIVE path was enabled.
+
+**Next MVP workstream (C7): GitHub contribution evidence.** OpenPayables already accepts manually approved GitHub-linked credit awards and converts credit balances into dollar obligations using an approved funded pool. It does **not** yet discover merged PRs and reviews from GitHub or queue them for approval. C7 adds read-only public-repository discovery and explicit human review before points are awarded. Do not substitute lines changed or commit counts for approved contribution quality; GitHub discovery never initiates payment. See `docs/GITHUB_EVIDENCE_MVP_PLAN_v0.1.md`.
 
 ## Delivered
 - Contribution credits: project-scoped contributors, configurable categories, manually approved 1/3/8 point events, append-only reversals, deduplication.
@@ -26,7 +36,7 @@ C5 introduces `payout sync <project-id> <contributor-id>` and `payout show <proj
 - Deterministic distribution: integer-cent allocation with largest-remainder rounding, locked point snapshots, no credit consumption.
 - TEST funding: project-specific operator attestations (legacy) or separately verified Stripe TEST top-up receipts; never mixed within a project. Provider evidence is uniquely assigned to one project; C3 adds sticky reversal holds and shared-platform commitment checks.
 - Monetary obligations: paid or held per recipient, independently of other contributors; duplicate sends blocked.
-- Stripe Connect TEST adapter: Express onboarding, transfers/reversals, signed test webhooks and C5 connected-account **read-only payout observations**; no live keys.
+- Stripe Connect TEST adapter: Express onboarding, transfers/reversals, signed test webhooks, C5 payout observations and C6 automatic-payout composition checks; no live keys.
 
 **Financial limits:** `fund add` is **operator-attested TEST funding** and never verifies external money. `fund import-topup` instead reads a **succeeded, USD, TEST-mode top-up with a Stripe balance transaction**, and uniquely attributes that gross test receipt to one project by an operator decision. This does **not** prove subscription revenue, project ownership of funds, or funds currently free from spending/reserves; receipt reversal may occur later. `payment send` still requires an available Stripe TEST balance at send time. Stripe Connect `transferred` means funds moved to a connected Stripe account, **not** a bank payout. No unrestricted live payment path exists.
 
@@ -162,4 +172,4 @@ For projects funded by verified TEST receipts, approval and send automatically c
 
 The CLI is a trusted **single-operator local tool**, not an authenticated public API or a multi-tenant hosted service. No Stripe test transfer can be attempted without a Stripe TEST credential, an enabled connected account, an approved and funded distribution period, and explicit operator execution. Financial data is stored in the `openpayables` PostgreSQL schema; no Supabase, Prisma, Clerk or Next.js coupling.
 
-Use `PROJECT_HANDOFF.md` for the current checkpoint. See `docs/MVP_SPEC_v0.1.md` for the MVP policy. The first reconciled Stripe TEST transfer has now been demonstrated. The next implementation milestone is to make real-money settlement safe and compliant before enabling live payments; this does not justify prematurely adding a frontend, tax service, GitHub scraper, or blindstats integration.
+Use `PROJECT_HANDOFF.md` for the current checkpoint. See `docs/MVP_SPEC_v0.1.md` for the MVP policy. The first reconciled Stripe TEST transfer has now been demonstrated. The immediate next implementation milestone is C7 GitHub evidence ingestion with an operator-approved credit award pathway, while live settlement and compliance review continue separately. This does not justify a frontend, tax service, automated per-line compensation, or blindstats integration.

@@ -192,3 +192,82 @@ describe("Stripe TEST connected bank-payout observation (read-only)", () => {
     await expect(client.listConnectedPayouts("not_an_account")).rejects.toThrow(/Invalid Stripe connected/);
   });
 });
+
+describe("Stripe TEST automatic payout composition (GET-only)", () => {
+  afterEach(() => vi.unstubAllGlobals());
+  const payout = {
+    id: "po_auto123", object: "payout", livemode: false,
+    automatic: true, reconciliation_status: "completed", status: "paid",
+    amount: 800, currency: "usd",
+  };
+  const entry = (id: string, source: string) => ({
+    id, object: "balance_transaction", amount: 800, currency: "usd", source,
+  });
+  const reply = (data: unknown) => new Response(JSON.stringify(data), { status: 200 });
+
+  it("links destination payment to a fully paginated automatic payout using the recipient scope", async () => {
+    const mock = vi.fn()
+      .mockResolvedValueOnce(reply(payout))
+      .mockResolvedValueOnce(reply({ object: "list", data: [entry("txn_other", "py_other")], has_more: true }))
+      .mockResolvedValueOnce(reply({ object: "list", data: [entry("txn_expected", "py_credited")], has_more: false }));
+    vi.stubGlobal("fetch", mock);
+    const result = await new StripeTestClient("sk_test_example")
+      .inspectPayoutComposition("acct_recipient123", "po_auto123", "py_credited");
+    expect(result).toMatchObject({
+      automatic: true, reconciliationStatus: "completed", payoutStatus: "paid",
+      matchingEntries: [{ id: "txn_expected", amountCents: 800, currency: "usd" }],
+    });
+    expect(mock.mock.calls.map((c) => c[0])).toEqual([
+      "https://api.stripe.com/v1/payouts/po_auto123",
+      "https://api.stripe.com/v1/balance_transactions?payout=po_auto123&limit=100",
+      "https://api.stripe.com/v1/balance_transactions?payout=po_auto123&limit=100&starting_after=txn_other",
+    ]);
+    expect(mock.mock.calls.every((c) => c[1]?.method === "GET" &&
+      c[1]?.headers["Stripe-Account"] === "acct_recipient123")).toBe(true);
+  });
+
+  it.each([
+    [{ automatic: false, reconciliation_status: "not_applicable" }, "not_applicable"],
+    [{ automatic: true, reconciliation_status: "in_progress" }, "in_progress"],
+  ])("never claims composition when payout is manual or unreconciled", async (override, expected) => {
+    const mock = vi.fn().mockResolvedValue(reply({ ...payout, ...override }));
+    vi.stubGlobal("fetch", mock);
+    const result = await new StripeTestClient("sk_test_example")
+      .inspectPayoutComposition("acct_recipient123", "po_auto123", "py_credited");
+    expect(result.matchingEntries).toEqual([]);
+    expect(result.reconciliationStatus).toBe(expected);
+    expect(mock).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    { livemode: true }, { object: "transfer" }, { id: "po_different" },
+    { amount: "800" }, { reconciliation_status: "invented" }, { status: "unknown" },
+  ])("rejects invalid or live payout responses: %o", async (override) => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(reply({ ...payout, ...override })));
+    await expect(new StripeTestClient("sk_test_example")
+      .inspectPayoutComposition("acct_recipient123", "po_auto123", "py_credited"))
+      .rejects.toThrow(/invalid or LIVE/);
+  });
+
+  it("rejects incomplete balance history rather than asserting a non-match", async () => {
+    const mock = vi.fn().mockResolvedValueOnce(reply(payout))
+      .mockResolvedValueOnce(reply({ object: "list", data: [], has_more: true }));
+    vi.stubGlobal("fetch", mock);
+    await expect(new StripeTestClient("sk_test_example")
+      .inspectPayoutComposition("acct_recipient123", "po_auto123", "py_credited"))
+      .rejects.toThrow(/incomplete/);
+  });
+
+  it("rejects duplicate Stripe balance transactions and invalid request IDs", async () => {
+    const mock = vi.fn().mockResolvedValueOnce(reply(payout))
+      .mockResolvedValueOnce(reply({ object: "list", data: [entry("txn_same", "py_credited"), entry("txn_same", "py_credited")], has_more: false }));
+    vi.stubGlobal("fetch", mock);
+    const api = new StripeTestClient("sk_test_example");
+    await expect(api.inspectPayoutComposition("acct_recipient123", "po_auto123", "py_credited"))
+      .rejects.toThrow(/duplicate/);
+    await expect(api.inspectPayoutComposition("other", "po_auto123", "py_credited"))
+      .rejects.toThrow(/connected/);
+    await expect(api.inspectPayoutComposition("acct_recipient123", "bad", "py_credited"))
+      .rejects.toThrow(/payout ID/);
+  });
+});

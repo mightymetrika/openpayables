@@ -6,7 +6,7 @@ import type { VoteChoice } from "../core/voting.js";
 import { OpenPayablesFinance } from "../storage/postgres/finance.js";
 import { StripeTestClient } from "../payments/stripe/test-client.js";
 
-const HELP = `OpenPayables Checkpoint C5 — one operator-owned Stripe TEST platform per project
+const HELP = `OpenPayables Checkpoint C6 — one operator-owned Stripe TEST platform per project
   project create <project-id> <name>
   contributor create <contributor-id> <display-name>
   project join <project-id> <contributor-id>
@@ -38,6 +38,7 @@ const HELP = `OpenPayables Checkpoint C5 — one operator-owned Stripe TEST plat
   payment history <obligation-uuid>
   payout sync <project-id> <contributor-id>             (read-only Stripe TEST fetch; auditable local observation)
   payout show <project-id> <contributor-id>             (local payout history, not obligation settlement)
+  payout trace <obligation-uuid> <stripe-po-id>          (GET-only automatic payout composition; no settlement write)
 Set OPENPAYABLES_DATABASE_URL to a dedicated development PostgreSQL database.
 Set OPENPAYABLES_OPERATOR_ID for all write commands. Neither is read from host apps.`;
 
@@ -133,6 +134,8 @@ async function main() {
         required(args, 2); result = await finance.syncConnectedPayouts(args[0]!, args[1]!, new StripeTestClient(), operator()); break;
       case "payout show":
         required(args, 2); result = await finance.connectedPayoutHistory(args[0]!, args[1]!); break;
+      case "payout trace":
+        required(args, 2); result = await finance.traceAutomaticPayoutForObligation(args[0]!, args[1]!, new StripeTestClient()); break;
       case "stripe account":
         if (args[0] !== "create") throw new Error(HELP);
         required(args, 4); operator();

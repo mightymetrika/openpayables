@@ -5,6 +5,10 @@ export interface ProviderTransfer {
   destination: string;
   amount_reversed: number;
   metadata: Record<string, string>;
+  /** Optional on older test fakes; live trace requires explicit livemode=false. */
+  livemode?: boolean;
+  /** Connected-account credit (py_...) belonging to this platform transfer. */
+  destination_payment?: string | null;
 }
 export interface TransferInstruction {
   obligationId: string;
@@ -64,4 +68,28 @@ export interface TestConnectedPayout {
 export interface TestConnectedPayoutProvider {
   platformAccountId(): Promise<string>;
   listConnectedPayouts(connectedAccountId: string): Promise<TestConnectedPayout[]>;
+}
+
+/** Stripe TEST-only balance-transaction attribution for ONE named payout. */
+export interface TestPayoutBalanceEntry {
+  id: string;
+  amountCents: number;
+  currency: string;
+}
+export interface TestAutomaticPayoutComposition {
+  payoutId: string;
+  connectedAccountId: string;
+  automatic: boolean;
+  reconciliationStatus: "completed" | "in_progress" | "not_applicable";
+  payoutStatus: TestPayoutStatus;
+  amountCents: number;
+  currency: string;
+  matchingEntries: TestPayoutBalanceEntry[];
+}
+export interface TestPayoutTraceProvider {
+  platformAccountId(): Promise<string>;
+  retrieveTransfer(transferId: string): Promise<ProviderTransfer>;
+  inspectPayoutComposition(
+    connectedAccountId: string, payoutId: string, destinationPaymentId: string,
+  ): Promise<TestAutomaticPayoutComposition>;
 }

@@ -1,10 +1,10 @@
 # OpenPayables — Project Handoff
 
 **Date:** 2026-11-17 (US Pacific)
-**Current version:** Checkpoints A through C5 locally validated; C5 read-only Stripe TEST payout observation and account-scope checks PASSED on Windows, pending C5 commit/push.
-**Git baseline:** `28a79a4` on `main` (Checkpoint B); `d03c455` on `development` (accepted C4 with final documentation).
+**Current version:** Checkpoints A through C6 validated locally; C5 committed at `3699855`, C6 accepted for commit. GitHub evidence ingestion is the next MVP workstream (C7).
+**Git baseline:** `28a79a4` on `main` (Checkpoint B); `3699855` on `development` (accepted and pushed C5).
 **Remote:** https://github.com/mightymetrika/openpayables
-**Working branch:** `development` at `d03c455`, with C5 changes staged and validated, awaiting commit/push. Do not change blindstats.
+**Working branch:** `development` at accepted C5 base `3699855`, with locally validated C6 staged for commit. Do not change blindstats.
 
 ## Checkpoint A — validated
 
@@ -106,7 +106,7 @@ Validated on Windows 11, Node 24.19.0, PostgreSQL 17 using PowerShell 5.1:
 - The C4 accepted code was committed at `15cb19c`. Three Markdown whitespace lines and stale acceptance metadata were corrected, and the documentation-only follow-up was pushed as **`d03c455`**; the development working tree was clean, with `main` unchanged at `28a79a4`.
 - Stripe support received the written **operator-owned model** eligibility inquiry on 2026-11-17. A human Connect review was requested. No answer, written approval, or case number has yet been received. LIVE remains disabled.
 
-## Checkpoint C5 — TEST connected-account bank payouts (LOCALLY VALIDATED, PENDING COMMIT)
+## Checkpoint C5 — TEST connected-account bank payouts (VALIDATED, COMMITTED)
 
 - `sql/006_checkpoint_c5.sql` adds project/contributor-scoped **latest connected-bank-payout snapshots** and **immutable observations**. No obligations, funding, or transfers are modified by payout inspection.
 - `StripeTestClient.listConnectedPayouts()` uses `GET /v1/payouts` with `Stripe-Account: <recipient-acct_...>`; rejects LIVE/malformed evidence, missing scope and incomplete pagination. The existing `sk_test_` guard remains hard-coded.
@@ -120,12 +120,29 @@ Validated on Windows 11, Node 24.19.0, PostgreSQL 17 using PowerShell 5.1:
 - `npm run test:integration` passed **10/10 PostgreSQL tests** against `openpayables_test`; `npm run check` passed **40/40 unit tests**, ESLint and TypeScript build. All 11 expected C5 files were staged and `git diff --cached --check` passed; Windows LF/CRLF warnings were informational.
 - Read-only live Stripe **sandbox API** check used the existing TEST platform `acct_1Ucqb8PGvHvd36JR`, existing synthetic Alice recipient `acct_1Ucr1LA9lZlrd52M`, and a new isolated observation project `openpayables-c5-observation-879152d9`. Project ownership binding matched the expected TEST platform.
 - `payout sync` made **two successful GET-only inspections**: `observedPayouts=0`, `newPayouts=0`, `newObservations=0`, `individualObligationsSettled=0` both times. `payout show` reported empty payout and event arrays. No Stripe bank payout existed in the returned records; this is valid but **not** proof of completed bank settlement.
-- No Stripe transfer, top-up, payout creation, or LIVE operation occurred. Individual payment-obligation statuses were not changed by the payout observer. **C5 tests and sandbox acceptance passed; C5 remains staged but uncommitted pending the Git checkpoint.**
+- No Stripe transfer, top-up, payout creation, or LIVE operation occurred. Individual payment-obligation statuses were not changed by the payout observer. **C5 committed and pushed as `3699855`; `development` clean, `main` unchanged at `28a79a4`.**
+
+## Checkpoint C6 — TEST automatic-payout composition (LOCALLY VALIDATED; READY TO COMMIT)
+
+- `payout trace <obligation-uuid> <po_...>` examines one named payout; it is read-only and never sends money, initiates a bank payout, or changes obligations or event history.
+- Requires a frozen `transferred` obligation with zero reversal, the C4 bound operator TEST platform, a verified existing Stripe `tr_...` transfer with matching amount/project/contributor account, and its destination payment `py_...`.
+- Retrieves the payout using `GET /v1/payouts/:id` scoped to the recipient's account. Only a **standard automatic payout** with `reconciliation_status=completed` supports Stripe's `GET /v1/balance_transactions?payout=...` membership query. All pages must be read successfully; malformed/duplicate/incomplete evidence stops the check.
+- Matches the `py_...` source to a positive USD balance transaction with the expected cents. `paid` reflects the **current provider snapshot**, not a guaranteed irrevocable bank deposit, and can later become `failed`. Manual/instant or pending reconciliation is explicitly non-attributable, not counted as a match.
+- The previous Alice synthetic account yielded **zero bank payouts** during C5 acceptance. Therefore C6 may not have a real Stripe `po_...` to inspect, which is acceptable; do not create new Stripe transfers/payouts/top-ups just for C6.
+- Unit, integration, and Stripe adapter tests added. **C6 Windows acceptance on 2026-11-17:** `npm run check` passed **51/51 unit tests**, ESLint, and TypeScript build; `npm run test:integration` passed **11/11 PostgreSQL integration tests** against the dedicated test DB; both unstaged and staged whitespace checks passed. **No bank payout was created or traced live:** the existing synthetic TEST account had zero payouts during C5; payout inclusion logic is covered by mocked API tests. C6 is staged, not yet committed. Live keys remain prohibited. See `docs/AUTOMATIC_PAYOUT_TRACE_v0.1.md`.
+
+## Checkpoint C7 — GitHub contribution evidence intake (NEXT MVP SLICE; NOT IMPLEMENTED)
+
+**Priority change:** GitHub evidence import is an MVP workstream, not something to postpone until live Stripe eligibility approval. Existing OpenPayables already records manually approved GitHub-linked awards (1/3/8 points), accumulates credits, and deterministically converts an authorized distributable pool into integer-cent obligations. **It does not yet discover or import GitHub activity or associate GitHub user IDs with contributors.**
+
+C7 first vertical slice: use read-only GitHub REST API against an operator-selected **public** repository; fetch **merged pull requests and submitted pull-request reviews** into an auditable local *candidate* queue; associate users through stable GitHub numeric IDs; verify/reconcile candidates and deduplicate on immutable GitHub event identity; explicitly approve a candidate into the existing credit-event machinery. No automatic payment, point award, or conversion from line/commit counts. The per-project approved funding pool remains the monetary determinant; cumulative contributor points determine shares. Distinct author and reviewer contributions may receive distinct awards with human-approved reasons. The same event cannot be awarded twice.
+
+Later GitHub App installation, private-repository access, verified webhooks, retries, issues and release activity are intentionally not part of the first slice. See `docs/GITHUB_EVIDENCE_MVP_PLAN_v0.1.md`.
 
 ## Immediate next action
 
-1. Commit the locally accepted C5 code and updated acceptance documents to `development`, push **development only**, and verify the working tree is clean. Keep `main` at `28a79a4`.
-2. Continue TEST-mode engineering toward reliable transfer-to-payout attribution and an eventual controlled real-money pilot; do not infer bank settlement from account-level payouts. No new Stripe funds or transfers are needed for this checkpoint.
-3. Await Stripe's written eligibility review; do not enable LIVE keys or assert recipient-specific bank settlement. A hosted multi-operator service additionally needs tenant authentication and an approved operator authorization model.
+1. Commit and push the **already locally accepted C6** changes on `development`; keep `main` at `28a79a4`. No new Stripe operation is needed.
+2. Start C7 with a read-only GitHub PR/review candidate importer and project-local approval workflow. Build against a public repository first, with tests that prevent duplicate awards and unauthorized automatic scoring.
+3. Continue to wait for Stripe's written eligibility review. Live-money payment initiation remains disabled. Avoid changing blindstats or randomplayables during standalone development.
 
 Local operator databases: `127.0.0.1:5432/openpayables` (development) and `127.0.0.1:5432/openpayables_test` (dedicated test). Keep secrets out of Git/chat. The local CLI remains a trusted single-operator tool, not authenticated multi-tenant SaaS.

@@ -1,5 +1,5 @@
 /** Stripe REST adapter: hard-locked to test API keys. No live transfer path. */
-import type { PaymentProvider, ProviderTransfer, TransferInstruction, TestFundingProvider, TestTopupReceipt, TestTopupObservation, TestConnectedPayout, TestPayoutStatus } from "../provider.js";
+import type { PaymentProvider, ProviderTransfer, TransferInstruction, TestFundingProvider, TestTopupReceipt, TestTopupObservation, TestConnectedPayout, TestPayoutStatus, TestAutomaticPayoutComposition } from "../provider.js";
 
 const BASE = "https://api.stripe.com/v1";
 
@@ -156,6 +156,76 @@ export class StripeTestClient implements PaymentProvider, TestFundingProvider {
       cursor = last.id;
     }
     throw new Error("Stripe connected payout history exceeds 1000 records; synchronization refused");
+  }
+
+  /** Read-only evidence for ONE payout. Automatic standard payouts only support composition. */
+  async inspectPayoutComposition(
+    connectedAccountId: string, payoutId: string, destinationPaymentId: string,
+  ): Promise<TestAutomaticPayoutComposition> {
+    if (!/^acct_[A-Za-z0-9]+$/.test(connectedAccountId)) throw new Error("Invalid connected Stripe account ID");
+    if (!/^po_[A-Za-z0-9]+$/.test(payoutId)) throw new Error("Invalid Stripe payout ID");
+    if (!/^py_[A-Za-z0-9]+$/.test(destinationPaymentId)) throw new Error("Invalid destination payment ID");
+
+    const raw = await this.request<Record<string, unknown>>(
+      "GET", `/payouts/${payoutId}`, undefined, undefined, connectedAccountId,
+    );
+    const validStatuses: TestPayoutStatus[] = ["pending", "in_transit", "paid", "failed", "canceled"];
+    const reconciliations = ["completed", "in_progress", "not_applicable"];
+    if (raw.object !== "payout" || raw.id !== payoutId || raw.livemode !== false ||
+      typeof raw.automatic !== "boolean" || !validStatuses.includes(raw.status as TestPayoutStatus) ||
+      !reconciliations.includes(String(raw.reconciliation_status)) ||
+      !Number.isSafeInteger(raw.amount) || (raw.amount as number) <= 0 ||
+      typeof raw.currency !== "string" || !/^[a-z]{3}$/.test(raw.currency)) {
+      throw new Error("Stripe payout composition returned invalid or LIVE evidence");
+    }
+    const evidence: TestAutomaticPayoutComposition = {
+      payoutId, connectedAccountId,
+      automatic: raw.automatic,
+      reconciliationStatus: raw.reconciliation_status as TestAutomaticPayoutComposition["reconciliationStatus"],
+      payoutStatus: raw.status as TestPayoutStatus,
+      amountCents: raw.amount as number,
+      currency: raw.currency,
+      matchingEntries: [],
+    };
+    // A manual/instant/unreconciled payout has NO verifiable composition from this endpoint.
+    if (!evidence.automatic || evidence.reconciliationStatus !== "completed") return evidence;
+
+    const seen = new Set<string>();
+    let cursor: string | undefined;
+    // Refuse partial evidence rather than claiming absence when Stripe has more data.
+    for (let pageNumber = 0; pageNumber < 10; pageNumber++) {
+      const params = new URLSearchParams({ payout: payoutId, limit: "100" });
+      if (cursor) params.set("starting_after", cursor);
+      const page = await this.request<{ object: unknown; data: unknown; has_more: unknown }>(
+        "GET", `/balance_transactions?${params.toString()}`, undefined, undefined, connectedAccountId,
+      );
+      if (page.object !== "list" || !Array.isArray(page.data) || typeof page.has_more !== "boolean") {
+        throw new Error("Stripe payout balance transaction list malformed; evidence incomplete");
+      }
+      let lastId: string | undefined;
+      for (const rawEntry of page.data) {
+        if (!rawEntry || typeof rawEntry !== "object") throw new Error("Invalid payout balance transaction evidence");
+        const entry = rawEntry as Record<string, unknown>;
+        if (entry.object !== "balance_transaction" || typeof entry.id !== "string" ||
+          !/^txn_[A-Za-z0-9]+$/.test(entry.id) || seen.has(entry.id) ||
+          !Number.isSafeInteger(entry.amount) || typeof entry.currency !== "string" ||
+          !/^[a-z]{3}$/.test(entry.currency) ||
+          (entry.source !== null && entry.source !== undefined && typeof entry.source !== "string")) {
+          throw new Error("Invalid or duplicate payout balance transaction evidence");
+        }
+        seen.add(entry.id);
+        lastId = entry.id;
+        if (entry.source === destinationPaymentId) {
+          evidence.matchingEntries.push({
+            id: entry.id, amountCents: entry.amount as number, currency: entry.currency,
+          });
+        }
+      }
+      if (!page.has_more) return evidence;
+      if (!lastId) throw new Error("Stripe payout pagination stalled; evidence incomplete");
+      cursor = lastId;
+    }
+    throw new Error("Stripe payout balance history exceeds 1000 records; evidence incomplete");
   }
 
   async createExpressAccount(email: string): Promise<{ id: string }> {

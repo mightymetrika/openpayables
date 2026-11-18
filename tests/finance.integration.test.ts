@@ -334,6 +334,69 @@ suite("Checkpoint B PostgreSQL integration (DEDICATED test DB)", () => {
     expect((await money.getObligation(obligationId)).status).toBe("held");
   });
 
+  it("traces a TEST transfer into a completed automatic payout without changing settlement state", async () => {
+    const obligation = await money.getObligation(aliceObligation);
+    expect(obligation.status).toBe("transferred");
+    const destination = obligation.connectedAccountId!;
+    const transfer = {
+      id: obligation.transferId!, amount: obligation.amountCents, currency: "usd",
+      destination, livemode: false, destination_payment: "py_known123",
+      amount_reversed: 0, metadata: {
+        obligation_id: obligation.id, project_id: obligation.projectId, period_id: obligation.periodId,
+      },
+    };
+    let payoutQueries = 0;
+    const provider = {
+      platformAccountId: async () => "acct_platformtest",
+      retrieveTransfer: async () => transfer,
+      inspectPayoutComposition: async (account: string, payout: string, payment: string) => {
+        expect(account).toBe(destination);
+        expect(payout).toBe("po_automatic123");
+        expect(payment).toBe("py_known123");
+        payoutQueries++;
+        return {
+          payoutId: payout, connectedAccountId: account, automatic: true,
+          reconciliationStatus: "completed" as const, payoutStatus: "paid" as const,
+          amountCents: 800, currency: "usd",
+          matchingEntries: [{ id: "txn_match123", amountCents: 800, currency: "usd" }],
+        };
+      },
+    };
+    const before = await pool.query("SELECT COUNT(*)::INT AS n FROM openpayables.payment_events WHERE obligation_id=$1", [obligation.id]);
+    const traced = await money.traceAutomaticPayoutForObligation(obligation.id, "po_automatic123", provider);
+    expect(traced).toMatchObject({
+      inclusion: "included_in_automatic_payout", bankPayoutReportedPaid: true,
+      individualObligationsSettled: 0, transferId: transfer.id,
+    });
+    expect(payoutQueries).toBe(1);
+    expect((await money.getObligation(obligation.id)).status).toBe("transferred");
+    const after = await pool.query("SELECT COUNT(*)::INT AS n FROM openpayables.payment_events WHERE obligation_id=$1", [obligation.id]);
+    expect(after.rows[0].n).toBe(before.rows[0].n);
+
+    const manual = { ...provider, inspectPayoutComposition: async (account: string, payout: string) => ({
+      payoutId: payout, connectedAccountId: account, automatic: false,
+      reconciliationStatus: "not_applicable" as const, payoutStatus: "paid" as const,
+      amountCents: 800, currency: "usd", matchingEntries: [],
+    }) };
+    expect((await money.traceAutomaticPayoutForObligation(obligation.id, "po_manual123", manual)).inclusion)
+      .toBe("not_attributable_manual_or_unsupported");
+    const mismatch = { ...provider, platformAccountId: async () => "acct_wrong" };
+    await expect(money.traceAutomaticPayoutForObligation(obligation.id, "po_automatic123", mismatch))
+      .rejects.toThrow(/do not match/);
+    const reversed = { ...provider, retrieveTransfer: async () => ({ ...transfer, amount_reversed: 10 }) };
+    await expect(money.traceAutomaticPayoutForObligation(obligation.id, "po_automatic123", reversed))
+      .rejects.toThrow(/inconsistent/);
+    const wrongPayout = { ...provider, inspectPayoutComposition: async () => ({
+      payoutId: "po_foranother", connectedAccountId: destination, automatic: true,
+      reconciliationStatus: "completed" as const, payoutStatus: "paid" as const,
+      amountCents: 800, currency: "usd", matchingEntries: [],
+    }) };
+    await expect(money.traceAutomaticPayoutForObligation(obligation.id, "po_automatic123", wrongPayout))
+      .rejects.toThrow(/inconsistent/);
+    await expect(money.traceAutomaticPayoutForObligation(bobObligation, "po_automatic123", provider))
+      .rejects.toThrow(/Only a non-reversed transferred/);
+  });
+
   it("reconciles a timeout and deduplicates a signed-provider event", async () => {
     const provider = new FakeStripeTest();
     provider.throwAfterTransfer = true;
