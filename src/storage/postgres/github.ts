@@ -1,5 +1,8 @@
 /** Project-scoped GitHub evidence. Persisted candidates are immutable and do not award credits. */
+import { randomUUID } from "node:crypto";
 import type { Pool, PoolClient } from "pg";
+import type { AwardSize } from "../../core/credits.js";
+import { githubAwardMetadata, positiveGitHubId } from "../../github/approval.js";
 import type { GitHubCandidate, GitHubRepository } from "../../github/discovery.js";
 
 function required(value: string, label: string): string {
@@ -134,10 +137,18 @@ export class OpenPayablesGitHub {
     if (!Number.isSafeInteger(offset) || offset < 0) throw new Error("Offset must be a nonnegative integer");
     const projectId = required(project, "project ID");
     const result = await this.pool.query(
-      `SELECT github_repo_id,candidate_key,kind,pull_id,pull_number,github_user_id,
-              github_login,title,source_url,merged_at,review_ids,last_review_at,discovered_at
-       FROM openpayables.github_candidates
-       WHERE project_id=$1 ORDER BY discovered_at,candidate_key LIMIT 101 OFFSET $2`,
+      `SELECT gc.github_repo_id,gc.candidate_key,gc.kind,gc.pull_id,gc.pull_number,gc.github_user_id,
+              gc.github_login,gc.title,gc.source_url,gc.merged_at,gc.review_ids,gc.last_review_at,gc.discovered_at,
+       gi.contributor_id AS linked_contributor_id,
+       ga.credit_event_id AS award_id,
+       ga.award_size AS approved_size
+       FROM openpayables.github_candidates gc
+       LEFT JOIN openpayables.github_identity_links gi
+         ON gi.project_id=gc.project_id AND gi.github_user_id=gc.github_user_id
+       LEFT JOIN openpayables.github_candidate_approvals ga
+         ON ga.project_id=gc.project_id AND ga.github_repo_id=gc.github_repo_id
+           AND ga.candidate_key=gc.candidate_key
+       WHERE gc.project_id=$1 ORDER BY gc.discovered_at,gc.candidate_key LIMIT 101 OFFSET $2`,
       [projectId, offset],
     );
     const data = result.rows.slice(0, 100).map((r) => ({
@@ -147,9 +158,118 @@ export class OpenPayablesGitHub {
       title: String(r.title), sourceUrl: String(r.source_url), mergedAt: r.merged_at as Date,
       reviewIds: r.review_ids as number[], lastReviewAt: r.last_review_at as Date | null,
       discoveredAt: r.discovered_at as Date,
+      linkedContributorId: r.linked_contributor_id as string | null,
+      awardId: r.award_id as string | null,
+      approvedSize: r.approved_size as AwardSize | null,
     }));
     return { projectId, offset, candidates: data, hasMore: result.rows.length > 100,
       nextOffset: result.rows.length > 100 ? offset + 100 : null,
-      note: "Pending evidence only; no GitHub-to-contributor identity link or credit award exists in C7." };
+      note: "Identity links are operator-attested, not proof of GitHub ownership; only explicit approval creates credits." };
   }
+
+  /** A trusted operator explicitly links a stable numeric GitHub user ID to an existing project member. */
+  async linkIdentity(project: string, githubUserId: number, contributor: string, operator: string) {
+    const projectId = required(project, "project ID");
+    const id = positiveGitHubId(githubUserId, "GitHub user ID");
+    const contributorId = required(contributor, "contributor ID");
+    const actor = required(operator, "operator");
+    return this.transaction(async (db) => {
+      const candidate = await db.query(
+        `SELECT 1 FROM openpayables.github_candidates WHERE project_id=$1 AND github_user_id=$2 LIMIT 1`,
+        [projectId, id],
+      );
+      if (candidate.rowCount !== 1) throw new Error("No discovered GitHub evidence for that project and user ID");
+      const member = await db.query(
+        `SELECT 1 FROM openpayables.project_contributors WHERE project_id=$1 AND contributor_id=$2`,
+        [projectId, contributorId],
+      );
+      if (member.rowCount !== 1) throw new Error("Contributor must already belong to the project");
+      const inserted = await db.query(
+        `INSERT INTO openpayables.github_identity_links(project_id,github_user_id,contributor_id,linked_by)
+         VALUES($1,$2,$3,$4) ON CONFLICT DO NOTHING RETURNING github_user_id`,
+        [projectId, id, contributorId, actor],
+      );
+      const existing = await db.query(
+        `SELECT github_user_id,contributor_id,linked_by,linked_at
+         FROM openpayables.github_identity_links
+         WHERE project_id=$1 AND (github_user_id=$2 OR contributor_id=$3)`,
+        [projectId, id, contributorId],
+      );
+      if (existing.rowCount !== 1 || Number(existing.rows[0].github_user_id) !== id ||
+          existing.rows[0].contributor_id !== contributorId) {
+        throw new Error("GitHub identity already linked differently; no reassignment allowed");
+      }
+      return { projectId, githubUserId: id, contributorId, linkedNow: inserted.rowCount === 1,
+        linkedBy: existing.rows[0].linked_by as string,
+        note: "Operator-attested identity association. GitHub user ownership is not verified by C8." };
+    });
+  }
+
+  /** Approve one immutable candidate and its credit event in the SAME PostgreSQL transaction. */
+  async approveCandidate(project: string, repoId: number, key: string, size: AwardSize,
+    reason: string, operator: string) {
+    const projectId = required(project, "project ID");
+    const githubRepoId = positiveGitHubId(repoId, "GitHub repository ID");
+    const candidateKey = required(key, "candidate key");
+    const why = required(reason, "approval reason");
+    const actor = required(operator, "operator");
+    return this.transaction(async (db) => {
+      // Lock this candidate to serialize duplicate and concurrent approval attempts.
+      const result = await db.query(
+        `SELECT kind,pull_id,github_user_id FROM openpayables.github_candidates
+         WHERE project_id=$1 AND github_repo_id=$2 AND candidate_key=$3 FOR UPDATE`,
+        [projectId, githubRepoId, candidateKey],
+      );
+      if (result.rowCount !== 1) throw new Error("GitHub candidate not found in that project and repository");
+      const kind = result.rows[0].kind as "pr_author" | "pr_reviewer";
+      const encoded = /^pr:([1-9]\d*):(author|reviewer):([1-9]\d*)$/.exec(candidateKey);
+      if (!encoded || Number(encoded[1]) !== Number(result.rows[0].pull_id) ||
+          Number(encoded[3]) !== Number(result.rows[0].github_user_id)) {
+        throw new Error("Stored GitHub candidate identity does not match its source key");
+      }
+      const meta = githubAwardMetadata(githubRepoId, candidateKey, kind, size);
+      const identity = await db.query(
+        `SELECT contributor_id FROM openpayables.github_identity_links
+         WHERE project_id=$1 AND github_user_id=$2`,
+        [projectId, result.rows[0].github_user_id],
+      );
+      if (identity.rowCount !== 1) throw new Error("GitHub identity is not linked to a project contributor");
+      const contributorId = String(identity.rows[0].contributor_id);
+      const existing = await db.query(
+        `SELECT contributor_id,award_size,approval_reason,approved_by,credit_event_id
+         FROM openpayables.github_candidate_approvals
+         WHERE project_id=$1 AND github_repo_id=$2 AND candidate_key=$3`,
+        [projectId, githubRepoId, candidateKey],
+      );
+      if (existing.rowCount === 1) {
+        const prior = existing.rows[0];
+        if (prior.contributor_id !== contributorId || prior.award_size !== size || prior.approval_reason !== why) {
+          throw new Error("Candidate already approved with different immutable terms");
+        }
+        return { projectId, githubRepoId, candidateKey, contributorId,
+          awardId: String(prior.credit_event_id), points: meta.points, category: meta.category,
+          approvedBy: String(prior.approved_by), approvedNow: false,
+          paymentObligationsCreated: 0 };
+      }
+      const awardId = randomUUID();
+      await db.query(
+        `INSERT INTO openpayables.credit_events
+         (id,project_id,contributor_id,category_code,event_type,size,points_delta,
+          source,source_id,role,reason,approved_by)
+         VALUES($1,$2,$3,$4,'award',$5,$6,$7,$8,$9,$10,$11)`,
+        [awardId, projectId, contributorId, meta.category, size, meta.points, meta.source,
+          meta.sourceId, meta.role, why, actor],
+      );
+      await db.query(
+        `INSERT INTO openpayables.github_candidate_approvals
+         (project_id,github_repo_id,candidate_key,contributor_id,award_size,approval_reason,approved_by,credit_event_id)
+         VALUES($1,$2,$3,$4,$5,$6,$7,$8)`,
+        [projectId, githubRepoId, candidateKey, contributorId, size, why, actor, awardId],
+      );
+      return { projectId, githubRepoId, candidateKey, contributorId,
+        awardId, points: meta.points, category: meta.category,
+        approvedBy: actor, approvedNow: true, paymentObligationsCreated: 0 };
+    });
+  }
+
 }

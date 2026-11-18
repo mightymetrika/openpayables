@@ -8,11 +8,13 @@ import { StripeTestClient } from "../payments/stripe/test-client.js";
 import { GitHubPublicClient, parseMaxPages, parsePublicRepository, parseSince } from "../github/discovery.js";
 import { OpenPayablesGitHub } from "../storage/postgres/github.js";
 
-const HELP = `OpenPayables Checkpoint C7 — one operator-owned Stripe TEST platform per project
+const HELP = `OpenPayables Checkpoint C8 — one operator-owned Stripe TEST platform per project
   github source add <project-id> <owner/repo>          (public, read-only; verifies repository)
   github source list <project-id>
   github sync <project-id> <owner/repo> <since-YYYY-MM-DD> [max-pr-pages]
-  github candidates <project-id> [offset]            (local evidence queue, no points)
+  github candidates <project-id> [offset]            (candidate queue, identity and approval status)
+  github identity link <project-id> <github-user-id> <contributor-id>  (operator attestation; immutable)
+  github approve <project-id> <github-repo-id> <candidate-key> <small|medium|large> <reason>
   project create <project-id> <name>
   contributor create <contributor-id> <display-name>
   project join <project-id> <contributor-id>
@@ -96,6 +98,16 @@ async function main() {
           sinceUtc: since, maxPages };
         break;
       }
+      case "github identity":
+        if (args[0] !== "link") throw new Error(HELP);
+        required(args, 4);
+        result = await github.linkIdentity(args[1]!, Number(args[2]), args[3]!, operator());
+        break;
+      case "github approve":
+        required(args, 5);
+        result = await github.approveCandidate(args[0]!, Number(args[1]), args[2]!,
+          args[3]! as AwardSize, args[4]!, operator());
+        break;
       case "github candidates":
         if (args.length !== 1 && args.length !== 2) throw new Error(HELP);
         result = await github.candidates(args[0]!, args[1] === undefined ? 0 : Number(args[1])); break;

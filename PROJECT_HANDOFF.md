@@ -1,10 +1,10 @@
 # OpenPayables — Project Handoff
 
 **Date:** 2026-11-18 (US Pacific)
-**Current version:** Checkpoints A–C6 committed; C7 public GitHub evidence discovery validated on Windows and staged for commit.
-**Git baseline:** `28a79a4` on `main` (Checkpoint B); `e5c69c3` on `development` (C6 validated, committed and pushed).
+**Current version:** Checkpoints A–C7 committed; C8 GitHub evidence approval and credit allocation ACCEPTED on Windows (commit pending).
+**Git baseline:** `28a79a4` on `main` (Checkpoint B); `836dc82` on `development` (C7 validated, committed and pushed).
 **Remote:** https://github.com/mightymetrika/openpayables
-**Working branch:** `development` at C6 commit `e5c69c3`, with accepted C7 files staged; C7 not yet committed. Do not change blindstats.
+**Working branch:** `development` at accepted C7 commit `836dc82`, with C8 implementation and acceptance documentation staged for review; commit pending. Do not change blindstats.
 
 ## Checkpoint A — validated
 
@@ -128,7 +128,7 @@ Validated on Windows 11, Node 24.19.0, PostgreSQL 17 using PowerShell 5.1:
 - **Acceptance on Windows, 2026-11-17:** `npm run check` passed **51/51 unit tests**, ESLint, TypeScript build; `npm run test:integration` passed **11/11** PostgreSQL tests. No actual payout `po_...` existed for the synthetic recipient, and no provider transfer/payout was created merely to exercise trace.
 - C6 accepted and pushed to `development` as **`e5c69c3`**, working tree clean; `main` remained `28a79a4`. `docs/AUTOMATIC_PAYOUT_TRACE_v0.1.md` records the limitations.
 
-## Checkpoint C7 — public GitHub discovery (WINDOWS ACCEPTED; COMMIT PENDING)
+## Checkpoint C7 — public GitHub discovery (WINDOWS ACCEPTED; COMMITTED `836dc82`)
 
 - **Starting Git baseline:** `development` at **`e5c69c3`**. The user's previous exported repository text reflected the older B main branch; C7 source is based on the accepted C6 code, not the stale export.
 - New forward migration `sql/007_checkpoint_c7.sql` introduces immutable, project-scoped public GitHub source registrations and candidate evidence snapshots. `src/github/discovery.ts` is a read-only, bounded GitHub REST adapter; `src/storage/postgres/github.ts` persists evidence in transactions.
@@ -142,17 +142,30 @@ Validated on Windows 11, Node 24.19.0, PostgreSQL 17 using PowerShell 5.1:
 
 - Migration `sql/007_checkpoint_c7.sql` applied successfully to the dedicated OpenPayables development database.
 - `npm run check` passed **61/61 unit tests**, ESLint, and TypeScript build. The **15 integration tests skipped** by this command were run separately: `npm run test:integration` passed **15/15** against `openpayables_test`.
-- `git diff --check` and `git diff --cached --check` passed. Git's LF/CRLF warnings were informational. All **11 expected C7 files** were staged; **no commit or push yet**.
+- `git diff --check` and `git diff --cached --check` passed. Git's LF/CRLF warnings were informational. All **11 expected C7 files** were staged; **subsequently committed and pushed**.
 - A separate local project `openpayables-c7-8dcd0ee2` registered the public `mightymetrika/openpayables` repository (stable GitHub repository ID `1460710596`); listing confirmed the source registration.
 - `github sync openpayables-c7-8dcd0ee2 mightymetrika/openpayables 2026-11-01` completed with `discovered=0`, `newCandidates=0`, `unchangedCandidates=0`, `changedEvidence=0`, `creditsAwarded=0`, and `paymentObligationsCreated=0`.
 - `github candidates` reported an empty queue, `hasMore=false`. An empty successful scan **does not demonstrate live positive candidate ingestion**; positive author/reviewer discovery and duplicate protection were tested with mocks and the database integration suite, but should also be exercised against an active public repo when convenient.
 - GitHub discovery did not create credit awards or Stripe transfers/payouts. Stripe's operator-owned business-model eligibility review remains pending; no LIVE capability is enabled.
 
-## Immediate next action
+## Checkpoint C7 post-acceptance Git checkpoint — 2026-11-18
 
-1. Apply the C7 **documentation-only acceptance patch** to the existing staged C7 implementation; restage `README.md`, `PROJECT_HANDOFF.md`, and `docs/GITHUB_DISCOVERY_v0.1.md`. Check `git diff --cached --check` and the complete staged file list.
-2. Commit and push the accepted C7 checkpoint to **`development` only**; verify clean tree and leave `main` at `28a79a4`.
-3. Begin C8: explicit GitHub numeric-ID-to-contributor linking, operator-reviewed approval of candidates into immutable credit awards, and a local demonstration that approved GitHub evidence affects a funded dollar allocation. Preserve duplicate protection and prohibit automatic payment. A real positive public-repo read can further validate C7's ingestion path.
-4. Continue waiting for Stripe's written model eligibility guidance before any LIVE money flows.
+The user applied the C7 acceptance documentation, staged all 11 expected files, and passed `git diff --cached --check`. C7 was committed as **`836dc82`** (`feat: discover public GitHub contribution evidence`) and pushed successfully to `origin/development`. Local and remote `development` matched; `git status --short` was empty, and `main` remained at `28a79a4`. The user-uploaded GitHub text export still reflects older B code; use the committed C7 source or the full checkpoint patch history, **not** that export, for future changes.
+
+## Checkpoint C8 — GitHub identity and operator-approved evidence (WINDOWS ACCEPTED; COMMIT PENDING)
+
+- Forward migration `sql/008_checkpoint_c8.sql`: two append-only, project-scoped tables for trusted-operator GitHub numeric-ID-to-contributor links and immutable candidate-to-credit approvals; foreign keys and unique constraints prevent silent reassignment and repeat credits.
+- `github identity link <project> <github-user-id> <contributor>` requires discovered candidate evidence and existing project membership. Each GitHub ID maps to only one project contributor, and each contributor to only one GitHub ID **within that project**. A username alone is not an identifier.
+- `github approve <project> <repo-id> <candidate-key> <small|medium|large> <reason>` locks the source candidate and atomically records the existing `credit_events` award (author = development; reviewer = review) and C8 approval evidence. Duplicate identical approvals return the original credit event; conflicting terms fail. No Stripe or payment code changed.
+- Candidate listing now shows identity link, approval ID and approved rubric size for review. C8 links are **operator-attested**, not authenticated proof that a contributor owns the GitHub account; consent/verified account claim is deferred to the hosted GitHub App/onboarding stage.
+- New unit and PostgreSQL integration tests exercise identity conflicts, transaction rollback, repeated/concurrent approvals, immutable audit, and a synthetic positive end-to-end `8:3` GitHub credits → `800/300` cents from an operator-attested **TEST** $11 pool, with held obligations and no actual payment.
+- **Windows acceptance passed (2026-11-18):** Development migration `sql/008_checkpoint_c8.sql` succeeded; `npm run check` passed **64/64 unit tests**, ESLint, and TypeScript build; `npm run test:integration` passed **20/20 PostgreSQL tests** against `openpayables_test`. `git diff --check` and `git diff --cached --check` passed. All 11 intended C8 files were staged. Git LF/CRLF notices were informational. No LIVE payments, Stripe transfers, hosted app, or changes to BlindStats/RandomPlayables.
+- Details and commands: `docs/GITHUB_APPROVAL_v0.1.md`.
+
+## C8 acceptance boundaries and next action
+
+- The positive **GitHub evidence → explicit operator approval → immutable credits → 8:3 points → $8/$3 TEST allocation** is validated using synthetic evidence in the isolated integration test database. The actual public GitHub scan for `mightymetrika/openpayables` found no eligible merged PRs, so a real positive GitHub import remains untested. A new test PR solely for this checkpoint is not required.
+- GitHub's contributor display of `mncube` reflects Git commit attribution in the repository; it is separate from OpenPayables' contributor identity links, payment identity, and the GitHub account used for authentication/pushing. Do not infer that credits or compensation have been assigned to it.
+- **Next:** commit and push these accepted C8 files and this final documentation on `development` after re-staging and checking `git diff --cached --check`. Preserve `main` at `28a79a4`. Then design and implement the independent-operator reusable GitHub App and contributor-controlled GitHub account claim, retaining a CLI-first approach until a hosted UI is justified. Stripe's eligibility review remains pending; no LIVE money movement.
 
 Local operator databases: `127.0.0.1:5432/openpayables` (development) and `127.0.0.1:5432/openpayables_test` (dedicated test). The CLI is a trusted single-operator tool; do not connect it to other apps' Production databases. Keep all secrets out of Git/chat.
