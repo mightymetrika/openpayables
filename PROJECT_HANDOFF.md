@@ -1,10 +1,10 @@
 # OpenPayables — Project Handoff
 
 **Date:** 2026-11-17 (US Pacific)
-**Current version:** Checkpoints A, B, C1, C2, C3, and C4 locally validated; C4 committed and pushed to `development` as `15cb19c`.
-**Git baseline:** `28a79a4` on `main` (Checkpoint B); `15cb19c` on `development` (Checkpoint C4, pushed 2026-11-17).
+**Current version:** Checkpoints A through C5 locally validated; C5 read-only Stripe TEST payout observation and account-scope checks PASSED on Windows, pending C5 commit/push.
+**Git baseline:** `28a79a4` on `main` (Checkpoint B); `d03c455` on `development` (accepted C4 with final documentation).
 **Remote:** https://github.com/mightymetrika/openpayables
-**Working branch:** `development` at `15cb19c`, clean and synchronized with `origin/development` after C4. Do not change blindstats.
+**Working branch:** `development` at `d03c455`, with C5 changes staged and validated, awaiting commit/push. Do not change blindstats.
 
 ## Checkpoint A — validated
 
@@ -101,10 +101,31 @@ Validated on Windows 11, Node 24.19.0, PostgreSQL 17 using PowerShell 5.1:
 - `stripe platform show openpayables-c2-verified-0c89cbaf` returned the existing platform `acct_1Ucqb8PGvHvd36JR`, `mode=test`, `bound_by=c4-verified-receipt-backfill`. This was a read-only local binding lookup, **not** a real payment or independent Stripe API acceptance test.
 - No additional Stripe top-up, transfer, live account connection, or live payment was performed. C4 was committed and pushed to `development` as `15cb19c`; `git status --short` was empty. `main` remains at `28a79a4`.
 
+## Checkpoint C4 post-commit cleanup and Stripe inquiry — completed
+
+- The C4 accepted code was committed at `15cb19c`. Three Markdown whitespace lines and stale acceptance metadata were corrected, and the documentation-only follow-up was pushed as **`d03c455`**; the development working tree was clean, with `main` unchanged at `28a79a4`.
+- Stripe support received the written **operator-owned model** eligibility inquiry on 2026-11-17. A human Connect review was requested. No answer, written approval, or case number has yet been received. LIVE remains disabled.
+
+## Checkpoint C5 — TEST connected-account bank payouts (LOCALLY VALIDATED, PENDING COMMIT)
+
+- `sql/006_checkpoint_c5.sql` adds project/contributor-scoped **latest connected-bank-payout snapshots** and **immutable observations**. No obligations, funding, or transfers are modified by payout inspection.
+- `StripeTestClient.listConnectedPayouts()` uses `GET /v1/payouts` with `Stripe-Account: <recipient-acct_...>`; rejects LIVE/malformed evidence, missing scope and incomplete pagination. The existing `sk_test_` guard remains hard-coded.
+- `payout sync <project> <contributor>` requires the bound operator's Stripe account and a previously configured recipient; records status/arrival/failure changes with idempotent repeated sync and stops on invalid identity/amount or a regressive terminal state. `payout show` retrieves the local audit.
+- Stripe's `paid` status applies to an **account-level payout**, possibly combining money from several Stripe transfers and unrelated transactions; it **never** changes an OpenPayables obligation to `paid_out`. A later `failed` observation remains visible. See `docs/BANK_PAYOUT_OBSERVATION_v0.1.md`.
+- New tests cover GET-only account scope, pagination, invalid/LIVE responses, wrong platform, history idempotency, transitions and unchanged obligations.
+
+### C5 acceptance evidence — 2026-11-17 (Windows/PostgreSQL 17; Stripe TEST sandbox)
+
+- `sql/006_checkpoint_c5.sql` migration completed successfully on the dedicated OpenPayables development database.
+- `npm run test:integration` passed **10/10 PostgreSQL tests** against `openpayables_test`; `npm run check` passed **40/40 unit tests**, ESLint and TypeScript build. All 11 expected C5 files were staged and `git diff --cached --check` passed; Windows LF/CRLF warnings were informational.
+- Read-only live Stripe **sandbox API** check used the existing TEST platform `acct_1Ucqb8PGvHvd36JR`, existing synthetic Alice recipient `acct_1Ucr1LA9lZlrd52M`, and a new isolated observation project `openpayables-c5-observation-879152d9`. Project ownership binding matched the expected TEST platform.
+- `payout sync` made **two successful GET-only inspections**: `observedPayouts=0`, `newPayouts=0`, `newObservations=0`, `individualObligationsSettled=0` both times. `payout show` reported empty payout and event arrays. No Stripe bank payout existed in the returned records; this is valid but **not** proof of completed bank settlement.
+- No Stripe transfer, top-up, payout creation, or LIVE operation occurred. Individual payment-obligation statuses were not changed by the payout observer. **C5 tests and sandbox acceptance passed; C5 remains staged but uncommitted pending the Git checkpoint.**
+
 ## Immediate next action
 
-1. Preserve the accepted `15cb19c` C4 source on `development`; clean the three Markdown whitespace lines and stale post-commit metadata in a documentation-only follow-up. Keep `main` unchanged pending deliberate release promotion.
-2. Ask Stripe about the **operator-owned** payer model, permitted funds flow and recipient onboarding, and secure authorization for an eventual hosted SaaS integration. Obtain applicable legal/tax clearance and provider approval before enabling live payments.
-3. After those requirements are understood, implement a strictly isolated LIVE adapter, bank-payout reconciliation, and operational recovery for a small approved pilot. Do not use Mightymetrika as a central payer for third-party projects.
+1. Commit the locally accepted C5 code and updated acceptance documents to `development`, push **development only**, and verify the working tree is clean. Keep `main` at `28a79a4`.
+2. Continue TEST-mode engineering toward reliable transfer-to-payout attribution and an eventual controlled real-money pilot; do not infer bank settlement from account-level payouts. No new Stripe funds or transfers are needed for this checkpoint.
+3. Await Stripe's written eligibility review; do not enable LIVE keys or assert recipient-specific bank settlement. A hosted multi-operator service additionally needs tenant authentication and an approved operator authorization model.
 
-Local operator databases: `127.0.0.1:5432/openpayables` (development) and `127.0.0.1:5432/openpayables_test` (dedicated test). Keep all secrets outside Git/chat. This is a trusted local CLI, **not an authenticated multi-user SaaS**. Do not modify blindstats or randomplayables production apps/databases.
+Local operator databases: `127.0.0.1:5432/openpayables` (development) and `127.0.0.1:5432/openpayables_test` (dedicated test). Keep secrets out of Git/chat. The local CLI remains a trusted single-operator tool, not authenticated multi-tenant SaaS.

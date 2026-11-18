@@ -47,3 +47,21 @@ export interface TestFundingProvider {
   verifyTestTopup(topupId: string): Promise<TestTopupReceipt>;
   inspectTestTopup(topupId: string): Promise<TestTopupObservation>;
 }
+
+/** Account-level bank payout evidence. Never equate this with a specific transfer. */
+export type TestPayoutStatus = "pending" | "in_transit" | "paid" | "failed" | "canceled";
+export interface TestConnectedPayout {
+  id: string;
+  amount: number;
+  currency: string;
+  status: TestPayoutStatus;
+  livemode: false;
+  destination: string | null;
+  created: number;
+  arrival_date: number | null;
+  failure_code: string | null;
+}
+export interface TestConnectedPayoutProvider {
+  platformAccountId(): Promise<string>;
+  listConnectedPayouts(connectedAccountId: string): Promise<TestConnectedPayout[]>;
+}

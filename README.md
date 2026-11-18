@@ -2,7 +2,7 @@
 
 A reusable TypeScript/PostgreSQL package for verified open-source contribution credits, contributor voting, and deterministic revenue-sharing **with actual monetary payment capability as the project goal**.
 
-**Status:** Checkpoints A, B, C1, C2, C3 and C4 locally validated and committed; C4 operator-owned TEST Stripe binding pushed to `development` as `15cb19c`. First Stripe Connect TEST transfer independently verified on 2026-11-17. No live payment capability is enabled. No blindstats or randomplayables databases or applications are modified.
+**Status:** Checkpoints A through C5 validated locally. C4 documentation was finalized on `development` as `d03c455`; C5 passed Windows tests and Stripe TEST read-only acceptance on 2026-11-17, **pending Git commit/push**. The first Stripe Connect TEST transfer was independently verified on 2026-11-17. No live payment capability is enabled. No blindstats or randomplayables databases or applications are modified.
 
 ## Operator-owned Stripe model (C4 — validated and committed)
 
@@ -12,13 +12,21 @@ C4 records an immutable, TEST-mode project-to-Stripe account binding (Stripe `ac
 
 See `docs/OPERATOR_STRIPE_OWNERSHIP_v0.1.md` and `docs/LIVE_PAYMENT_READINESS_v0.1.md` for deployment, approval and real-money requirements. **C4 acceptance (2026-11-17):** migration passed, **9/9 PostgreSQL integration tests**, **29/29 unit tests**, lint and TypeScript build passed; existing verified-funding project backfill showed its expected Stripe TEST account ID. A fake-provider test verified that wrong-platform credentials are rejected before a transfer attempt. C4 was committed and pushed as `15cb19c`; no live payment capability was added.
 
+## Checkpoint C5 — Stripe TEST bank payout observation (locally accepted)
+
+C5 introduces `payout sync <project-id> <contributor-id>` and `payout show <project-id> <contributor-id>`. The sync makes **GET-only** calls to Stripe's TEST payout list, scoped via `Stripe-Account` to that project's configured contributor destination. Snapshots and immutable observation events record payout status changes, including later `failed` reports. A project/account mismatch, LIVE-mode response, malformed evidence or unsafe status regression stops synchronization.
+
+**These are connected-account-level records.** A Stripe bank payout may combine several transfers or other funds. Even if Stripe reports an account's payout as `paid`, OpenPayables **does not mark any individual payment obligation bank-settled**. No payout creation, new top-up, transfer or LIVE key is involved. See `docs/BANK_PAYOUT_OBSERVATION_v0.1.md`.
+
+**C5 acceptance (2026-11-17):** development migration passed; **10/10 PostgreSQL integration tests**, **40/40 unit tests**, ESLint, TypeScript build, and staged whitespace check passed. Using a separate local project `openpayables-c5-observation-879152d9`, two successful read-only Stripe sandbox payout syncs for the already-onboarded synthetic Alice account each returned **zero payouts and zero bank-settled obligations**; the local audit remained empty and no duplicate observations were created. C5 is validated but pending Git commit. Stripe has acknowledged the operator-owned eligibility inquiry by email; approval is **not** received.
+
 ## Delivered
 - Contribution credits: project-scoped contributors, configurable categories, manually approved 1/3/8 point events, append-only reversals, deduplication.
 - Governance: immutable weighted ballots with voting weights frozen when a proposal opens.
 - Deterministic distribution: integer-cent allocation with largest-remainder rounding, locked point snapshots, no credit consumption.
 - TEST funding: project-specific operator attestations (legacy) or separately verified Stripe TEST top-up receipts; never mixed within a project. Provider evidence is uniquely assigned to one project; C3 adds sticky reversal holds and shared-platform commitment checks.
 - Monetary obligations: paid or held per recipient, independently of other contributors; duplicate sends blocked.
-- Stripe Connect TEST adapter: Express onboarding, account readiness, transfers, status reconciliation, transfer-reversal detection, verified webhook receipt, no live keys.
+- Stripe Connect TEST adapter: Express onboarding, transfers/reversals, signed test webhooks and C5 connected-account **read-only payout observations**; no live keys.
 
 **Financial limits:** `fund add` is **operator-attested TEST funding** and never verifies external money. `fund import-topup` instead reads a **succeeded, USD, TEST-mode top-up with a Stripe balance transaction**, and uniquely attributes that gross test receipt to one project by an operator decision. This does **not** prove subscription revenue, project ownership of funds, or funds currently free from spending/reserves; receipt reversal may occur later. `payment send` still requires an available Stripe TEST balance at send time. Stripe Connect `transferred` means funds moved to a connected Stripe account, **not** a bank payout. No unrestricted live payment path exists.
 
@@ -87,6 +95,17 @@ npm run cli -- distribution create my-project "pilot-week-1" 1100
 npm run cli -- distribution approve PERIOD_UUID
 npm run cli -- distribution show PERIOD_UUID
 ```
+
+## Read-only connected-bank-payout inspection (C5 TEST)
+
+After `npm run db:migrate`, with a project bound to the current Stripe TEST platform and a contributor assigned an existing connected-account destination:
+
+```powershell
+npm run cli -- payout sync my-project my-contributor
+npm run cli -- payout show my-project my-contributor
+```
+
+The sync requires `OPENPAYABLES_OPERATOR_ID` and an operator-owned `sk_test_` key supplied **privately** in the local environment. The show command reads the local audit only. Zero payouts is valid. These commands never create bank payouts or change individual obligation statuses.
 
 ## Optional Stripe Connect TEST acceptance
 

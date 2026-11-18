@@ -271,6 +271,69 @@ suite("Checkpoint B PostgreSQL integration (DEDICATED test DB)", () => {
     expect(attempts.rows[0].n).toBe(0);
   });
 
+  it("audits TEST connected-account payout status without settling individual obligations", async () => {
+    const payoutProject = `payout-observer-${suffix}`;
+    const account = `acct_recipient${suffix.replace(/-/g, "")}`;
+    const platform = `acct_payoutowner${suffix.replace(/-/g, "")}`;
+    await credits.createProject(payoutProject, "Read-only payout observer test", "operator");
+    await credits.joinProject(payoutProject, a);
+    await credits.award({ projectId: payoutProject, contributorId: a, category: "development",
+      size: "large", source: "github", sourceId: suffix, role: "author",
+      reason: "Accepted", approvedBy: "operator" });
+    await money.addFunding(payoutProject, 100, `payout-observe-${suffix}`, "operator");
+    const period = await money.createPeriod(payoutProject, `payout-observe-${suffix}`, 100, "operator");
+    await money.approvePeriod(period.id, "operator");
+    const obligationId = (await money.showPeriod(period.id)).obligations[0]!.id;
+    const providerIdentity = new FakeStripeTest();
+    providerIdentity.platformAccountId = async () => platform;
+    await money.bindTestPlatform(payoutProject, providerIdentity, "operator");
+    await money.setDestination(payoutProject, a, account, "operator");
+    const payout = {
+      id: `po_${suffix.replace(/-/g, "")}`, amount: 800, currency: "usd", livemode: false as const,
+      status: "pending" as "pending" | "paid" | "failed", destination: "ba_testdestination",
+      created: 1770000000, arrival_date: 1770172800, failure_code: null as string | null,
+    };
+    let lookups = 0;
+    const provider = {
+      platformAccountId: async () => platform,
+      listConnectedPayouts: async (id: string) => {
+        expect(id).toBe(account);
+        lookups++;
+        return [{ ...payout }];
+      },
+    };
+    const mismatch = {
+      ...provider, platformAccountId: async () => `acct_notowner${suffix.replace(/-/g, "")}`,
+    };
+    await expect(money.syncConnectedPayouts(payoutProject, a, mismatch, "operator"))
+      .rejects.toThrow(/do not match/);
+    expect(lookups).toBe(0);
+    expect(await money.syncConnectedPayouts(payoutProject, a, provider, "operator"))
+      .toMatchObject({ observedPayouts: 1, newPayouts: 1, newObservations: 1, individualObligationsSettled: 0 });
+    expect(await money.syncConnectedPayouts(payoutProject, a, provider, "operator"))
+      .toMatchObject({ newPayouts: 0, newObservations: 0 });
+    payout.status = "paid";
+    expect(await money.syncConnectedPayouts(payoutProject, a, provider, "operator"))
+      .toMatchObject({ newObservations: 1, individualObligationsSettled: 0 });
+    // 'paid' is a Stripe account-level bank payout, NOT proof about this obligation.
+    expect((await money.getObligation(obligationId)).status).toBe("held");
+    payout.status = "failed";
+    payout.failure_code = "account_closed";
+    await money.syncConnectedPayouts(payoutProject, a, provider, "operator");
+    const history = await money.connectedPayoutHistory(payoutProject, a);
+    expect(history.payouts).toMatchObject([{ current_status: "failed", amount_cents: 800 }]);
+    expect(history.events.map((x) => x.status)).toEqual(["pending", "paid", "failed"]);
+    payout.status = "pending";
+    await expect(money.syncConnectedPayouts(payoutProject, a, provider, "operator"))
+      .rejects.toThrow(/status regressed/);
+    payout.status = "failed";
+    payout.amount = 900;
+    await expect(money.syncConnectedPayouts(payoutProject, a, provider, "operator"))
+      .rejects.toThrow(/identity or amount changed/);
+    expect((await money.connectedPayoutHistory(payoutProject, a)).events).toHaveLength(3);
+    expect((await money.getObligation(obligationId)).status).toBe("held");
+  });
+
   it("reconciles a timeout and deduplicates a signed-provider event", async () => {
     const provider = new FakeStripeTest();
     provider.throwAfterTransfer = true;

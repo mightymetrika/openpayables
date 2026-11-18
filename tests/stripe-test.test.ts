@@ -130,3 +130,65 @@ describe("Stripe TEST top-up reversal inspection", () => {
       .rejects.toThrow(/invalid evidence/);
   });
 });
+
+
+describe("Stripe TEST connected bank-payout observation (read-only)", () => {
+  afterEach(() => vi.unstubAllGlobals());
+  const payout = {
+    id: "po_example123", object: "payout", livemode: false,
+    amount: 800, currency: "usd", status: "pending", destination: "ba_example123",
+    created: 1770000000, arrival_date: 1770172800, failure_code: null,
+  };
+
+  it("reads payout data from the connected account header, never the platform", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      object: "list", data: [payout], has_more: false,
+    }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const result = await new StripeTestClient("sk_test_example").listConnectedPayouts("acct_recipient123");
+    expect(result).toMatchObject([{ id: "po_example123", status: "pending", livemode: false }]);
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(fetchMock.mock.calls[0]?.[0]).toBe("https://api.stripe.com/v1/payouts?limit=100");
+    expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({
+      method: "GET", headers: { "Stripe-Account": "acct_recipient123" },
+    });
+  });
+
+  it("paginates across connected-account payout pages without writing to Stripe", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        object: "list", data: [payout], has_more: true,
+      }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        object: "list", data: [{ ...payout, id: "po_second456", status: "paid" }], has_more: false,
+      }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const result = await new StripeTestClient("sk_test_example").listConnectedPayouts("acct_recipient123");
+    expect(result.map((p) => p.id)).toEqual(["po_example123", "po_second456"]);
+    expect(fetchMock.mock.calls[1]?.[0]).toBe(
+      "https://api.stripe.com/v1/payouts?limit=100&starting_after=po_example123");
+    expect(fetchMock.mock.calls.every((c) => c[1]?.method === "GET" &&
+      c[1]?.headers["Stripe-Account"] === "acct_recipient123")).toBe(true);
+  });
+
+  it.each([
+    { livemode: true }, { object: "transfer" }, { amount: 0 }, { amount: "800" },
+    { id: "not_a_payout" }, { status: "unrecognized" }, { currency: "invalid" },
+    { arrival_date: "tomorrow" },
+  ])("refuses invalid or LIVE payout evidence: %o", async (override) => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      object: "list", data: [{ ...payout, ...override }], has_more: false,
+    }), { status: 200 })));
+    await expect(new StripeTestClient("sk_test_example").listConnectedPayouts("acct_recipient123"))
+      .rejects.toThrow(/Invalid Stripe TEST connected payout evidence/);
+  });
+
+  it("refuses a duplicate payout or an invalid connected account ID", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      object: "list", data: [payout, payout], has_more: false,
+    }), { status: 200 })));
+    const client = new StripeTestClient("sk_test_example");
+    await expect(client.listConnectedPayouts("acct_recipient123")).rejects.toThrow(/Invalid Stripe TEST/);
+    await expect(client.listConnectedPayouts("not_an_account")).rejects.toThrow(/Invalid Stripe connected/);
+  });
+});

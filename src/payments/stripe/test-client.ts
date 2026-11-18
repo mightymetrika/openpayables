@@ -1,5 +1,5 @@
 /** Stripe REST adapter: hard-locked to test API keys. No live transfer path. */
-import type { PaymentProvider, ProviderTransfer, TransferInstruction, TestFundingProvider, TestTopupReceipt, TestTopupObservation } from "../provider.js";
+import type { PaymentProvider, ProviderTransfer, TransferInstruction, TestFundingProvider, TestTopupReceipt, TestTopupObservation, TestConnectedPayout, TestPayoutStatus } from "../provider.js";
 
 const BASE = "https://api.stripe.com/v1";
 
@@ -8,13 +8,14 @@ export class StripeTestClient implements PaymentProvider, TestFundingProvider {
     if (!secret?.startsWith("sk_test_")) throw new Error("Stripe TEST secret key (sk_test_...) required; live keys are forbidden");
   }
 
-  private async request<T>(method: "GET" | "POST", path: string, body?: URLSearchParams, idempotencyKey?: string): Promise<T> {
+  private async request<T>(method: "GET" | "POST", path: string, body?: URLSearchParams, idempotencyKey?: string, connectedAccountId?: string): Promise<T> {
     const response = await fetch(`${BASE}${path}`, {
       method,
       headers: {
         Authorization: `Bearer ${this.secret}`,
         ...(body ? { "Content-Type": "application/x-www-form-urlencoded" } : {}),
         ...(idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {}),
+        ...(connectedAccountId ? { "Stripe-Account": connectedAccountId } : {}),
       },
       body: body?.toString(),
       signal: AbortSignal.timeout(30000),
@@ -103,6 +104,58 @@ export class StripeTestClient implements PaymentProvider, TestFundingProvider {
     if (!/^acct_[A-Za-z0-9]+$/.test(accountId)) throw new Error("Invalid Stripe connected account ID");
     const account = await this.request<{ payouts_enabled: boolean; deleted?: boolean }>("GET", `/accounts/${accountId}`);
     return !!account.payouts_enabled && !account.deleted;
+  }
+
+  /** Read Stripe TEST bank-payout status from the connected account, NEVER the platform. */
+  async listConnectedPayouts(connectedAccountId: string): Promise<TestConnectedPayout[]> {
+    if (!/^acct_[A-Za-z0-9]+$/.test(connectedAccountId)) throw new Error("Invalid Stripe connected account ID");
+    const payouts: TestConnectedPayout[] = [];
+    const seen = new Set<string>();
+    let cursor: string | undefined;
+    // Deliberately refuse incomplete history rather than treating a truncated list as complete.
+    for (let pageNumber = 0; pageNumber < 10; pageNumber++) {
+      const params = new URLSearchParams({ limit: "100" });
+      if (cursor) params.set("starting_after", cursor);
+      const page = await this.request<{object: unknown; data: unknown; has_more: unknown}>(
+        "GET", `/payouts?${params.toString()}`, undefined, undefined, connectedAccountId,
+      );
+      if (page.object !== "list" || !Array.isArray(page.data) || typeof page.has_more !== "boolean") {
+        throw new Error("Stripe connected payout list response is malformed");
+      }
+      for (const raw of page.data) {
+        if (!raw || typeof raw !== "object") throw new Error("Invalid Stripe connected payout evidence");
+        const p = raw as Record<string, unknown>;
+        const permitted: TestPayoutStatus[] = ["pending", "in_transit", "paid", "failed", "canceled"];
+        if (p.object !== "payout" || typeof p.id !== "string" || !/^po_[A-Za-z0-9]+$/.test(p.id) ||
+          seen.has(p.id) || p.livemode !== false ||
+          !Number.isSafeInteger(p.amount) || (p.amount as number) <= 0 ||
+          typeof p.currency !== "string" || !/^[a-z]{3}$/.test(p.currency) ||
+          !permitted.includes(p.status as TestPayoutStatus) ||
+          !Number.isSafeInteger(p.created) || (p.created as number) < 0 ||
+          (p.arrival_date !== null && p.arrival_date !== undefined &&
+            (!Number.isSafeInteger(p.arrival_date) || (p.arrival_date as number) < 0)) ||
+          (p.destination !== null && p.destination !== undefined &&
+            (typeof p.destination !== "string" || !/^[A-Za-z0-9_]+$/.test(p.destination))) ||
+          (p.failure_code !== null && p.failure_code !== undefined &&
+            (typeof p.failure_code !== "string" || p.failure_code.length > 128))) {
+          throw new Error("Invalid Stripe TEST connected payout evidence; no results accepted");
+        }
+        seen.add(p.id);
+        payouts.push({
+          id: p.id, amount: p.amount as number, currency: p.currency,
+          status: p.status as TestPayoutStatus, livemode: false,
+          destination: (p.destination as string | null | undefined) ?? null,
+          created: p.created as number,
+          arrival_date: (p.arrival_date as number | null | undefined) ?? null,
+          failure_code: (p.failure_code as string | null | undefined) ?? null,
+        });
+      }
+      if (!page.has_more) return payouts;
+      const last = payouts.at(-1);
+      if (!last) throw new Error("Stripe payout pagination ended unexpectedly");
+      cursor = last.id;
+    }
+    throw new Error("Stripe connected payout history exceeds 1000 records; synchronization refused");
   }
 
   async createExpressAccount(email: string): Promise<{ id: string }> {

@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { Pool, PoolClient } from "pg";
 import { allocateCents } from "../../core/allocation.js";
-import type { PaymentProvider, ProviderTransfer, TransferInstruction, TestFundingProvider, TestTopupReceipt, TestTopupObservation } from "../../payments/provider.js";
+import type { PaymentProvider, ProviderTransfer, TransferInstruction, TestFundingProvider, TestTopupReceipt, TestTopupObservation, TestConnectedPayoutProvider, TestPayoutStatus } from "../../payments/provider.js";
 
 function nonblank(value: string, label: string): string {
   if (typeof value !== "string" || !value.trim()) throw new Error(`${label} must be nonblank`);
@@ -659,6 +659,146 @@ export class OpenPayablesFinance {
       if (o.status !== next || !o.transferId) await this.recordEvent(db, id, next, `Verified Stripe TEST webhook ${eventId}`);
       return { duplicate: false, updated: true };
     });
+  }
+
+  /**
+   * Observe connected-account bank payouts, not individual transfer settlements.
+   * No transfers/payouts are created. No distribution obligations are updated.
+   */
+  async syncConnectedPayouts(
+    projectId: string, contributorId: string, provider: TestConnectedPayoutProvider, operator: string,
+  ) {
+    projectId = nonblank(projectId, "project");
+    contributorId = nonblank(contributorId, "contributor");
+    operator = nonblank(operator, "operator");
+    const platformId = await this.assertTestPlatform(projectId, provider);
+    const assigned = await this.pool.query(
+      `SELECT stripe_account_id FROM openpayables.payment_destinations
+       WHERE project_id=$1 AND contributor_id=$2`, [projectId, contributorId],
+    );
+    if (assigned.rowCount !== 1) throw new Error("Contributor has no configured Stripe TEST payout destination");
+    const connectedId: string = String(assigned.rows[0].stripe_account_id);
+    const observed = await provider.listConnectedPayouts(connectedId);
+    // Validate even fake/alternate provider implementations before any database writes.
+    const ids = new Set<string>();
+    const statuses: TestPayoutStatus[] = ["pending", "in_transit", "paid", "failed", "canceled"];
+    for (const p of observed) {
+      if (!/^po_[A-Za-z0-9]+$/.test(p.id) || ids.has(p.id) || p.livemode !== false ||
+        !Number.isSafeInteger(p.amount) || p.amount <= 0 ||
+        !/^[a-z]{3}$/.test(p.currency) || !statuses.includes(p.status) ||
+        !Number.isSafeInteger(p.created) || p.created < 0 ||
+        (p.arrival_date !== null && (!Number.isSafeInteger(p.arrival_date) || p.arrival_date < 0)) ||
+        (p.destination !== null && !/^[A-Za-z0-9_]+$/.test(p.destination)) ||
+        (p.failure_code !== null && (typeof p.failure_code !== "string" || p.failure_code.length > 128))) {
+        throw new Error("Invalid Stripe TEST connected payout evidence; sync aborted");
+      }
+      ids.add(p.id);
+    }
+    return this.transaction(async (db) => {
+      // Lock the project to serialize competing payout syncs; lock the assigned
+      // destination row to ensure a concurrent reassignment cannot cross scopes.
+      const project = await db.query("SELECT id FROM openpayables.projects WHERE id=$1 FOR UPDATE", [projectId]);
+      if (project.rowCount !== 1) throw new Error("Project not found");
+      const current = await db.query(
+        `SELECT stripe_account_id FROM openpayables.payment_destinations
+         WHERE project_id=$1 AND contributor_id=$2 FOR UPDATE`, [projectId, contributorId],
+      );
+      if (current.rowCount !== 1 || current.rows[0].stripe_account_id !== connectedId) {
+        throw new Error("Payout destination changed during inspection; sync refused");
+      }
+      const bound = await db.query(
+        "SELECT stripe_platform_account_id FROM openpayables.project_payment_platforms WHERE project_id=$1", [projectId],
+      );
+      if (bound.rowCount !== 1 || bound.rows[0].stripe_platform_account_id !== platformId) {
+        throw new Error("Stripe project binding changed during payout inspection");
+      }
+      let newPayouts = 0;
+      let changes = 0;
+      for (const p of observed) {
+        const prior = await db.query(
+          `SELECT * FROM openpayables.connected_payouts
+           WHERE project_id=$1 AND contributor_id=$2 AND stripe_payout_id=$3 FOR UPDATE`,
+          [projectId, contributorId, p.id],
+        );
+        if (prior.rowCount !== 0) {
+          const old = prior.rows[0];
+          // An existing payout's identity and money fields are immutable.
+          if (old.stripe_platform_account_id !== platformId || old.connected_account_id !== connectedId ||
+            safeNumber(old.amount_cents) !== p.amount || old.currency !== p.currency ||
+            safeNumber(old.created_unix) !== p.created || old.payout_destination_id !== p.destination) {
+            throw new Error("Previously observed Stripe payout identity or amount changed; manual review required");
+          }
+          const oldStatus = String(old.current_status);
+          const allowed: Record<string, string[]> = {
+            pending: ["pending", "in_transit", "paid", "failed", "canceled"],
+            in_transit: ["in_transit", "paid", "failed", "canceled"],
+            paid: ["paid", "failed"],
+            failed: ["failed"],
+            canceled: ["canceled"],
+          };
+          if (!allowed[oldStatus]?.includes(p.status)) {
+            throw new Error("Stripe payout status regressed; manual review required");
+          }
+          if (oldStatus === p.status &&
+            (old.arrival_unix === null ? null : safeNumber(old.arrival_unix)) === p.arrival_date &&
+            old.failure_code === p.failure_code) continue;
+          await db.query(
+            `UPDATE openpayables.connected_payouts
+             SET current_status=$4,arrival_unix=$5,failure_code=$6,last_observed_at=now()
+             WHERE project_id=$1 AND contributor_id=$2 AND stripe_payout_id=$3`,
+            [projectId, contributorId, p.id, p.status, p.arrival_date, p.failure_code],
+          );
+        } else {
+          await db.query(
+            `INSERT INTO openpayables.connected_payouts
+             (project_id,contributor_id,stripe_payout_id,stripe_platform_account_id,connected_account_id,
+              amount_cents,currency,payout_destination_id,created_unix,current_status,arrival_unix,failure_code)
+             VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+            [projectId, contributorId, p.id, platformId, connectedId, p.amount, p.currency,
+              p.destination, p.created, p.status, p.arrival_date, p.failure_code],
+          );
+          newPayouts++;
+        }
+        await db.query(
+          `INSERT INTO openpayables.connected_payout_observations
+           (id,project_id,contributor_id,stripe_payout_id,status,arrival_unix,failure_code,observed_by)
+           VALUES($1,$2,$3,$4,$5,$6,$7,$8)`,
+          [randomUUID(), projectId, contributorId, p.id, p.status, p.arrival_date, p.failure_code, operator],
+        );
+        changes++;
+      }
+      return {
+        projectId, contributorId, platformAccountId: platformId, connectedAccountId: connectedId,
+        observedPayouts: observed.length, newPayouts, newObservations: changes,
+        individualObligationsSettled: 0,
+        note: "Bank payout records are account-level; no individual OpenPayables transfer is marked bank-settled.",
+      };
+    });
+  }
+
+  /** Local audit view: never labels individual contribution-payment obligations as settled. */
+  async connectedPayoutHistory(projectId: string, contributorId: string) {
+    projectId = nonblank(projectId, "project");
+    contributorId = nonblank(contributorId, "contributor");
+    const payouts = await this.pool.query(
+      `SELECT stripe_payout_id,connected_account_id,amount_cents,currency,
+              current_status,arrival_unix,failure_code,first_observed_at,last_observed_at
+       FROM openpayables.connected_payouts
+       WHERE project_id=$1 AND contributor_id=$2 ORDER BY first_observed_at,stripe_payout_id`,
+      [projectId, contributorId],
+    );
+    const events = await this.pool.query(
+      `SELECT stripe_payout_id,status,arrival_unix,failure_code,observed_by,observed_at
+       FROM openpayables.connected_payout_observations
+       WHERE project_id=$1 AND contributor_id=$2 ORDER BY observed_at,id`,
+      [projectId, contributorId],
+    );
+    return {
+      projectId, contributorId,
+      payouts: payouts.rows.map((r) => ({ ...r, amount_cents: safeNumber(r.amount_cents) })),
+      events: events.rows,
+      note: "Connected-account payouts are not uniquely attributable to OpenPayables transfers.",
+    };
   }
 
   async paymentHistory(id: string) {
