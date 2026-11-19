@@ -1,6 +1,6 @@
 # C12 — Contributor enrollment, review queue, and compensation preview
 
-**Status:** C12 Windows PostgreSQL/Vitest acceptance passed on 2026-11-19; documentation updated, implementation commit/push still pending. Base: accepted `development` commit `239962f` (C11). No changes to the live-payment gate or other applications.
+**Status:** C12 accepted on Windows on 2026-11-19 and committed/pushed to `development` at `5a94518` (88 unit + 38 PostgreSQL integration tests passed). Base was accepted C11 `239962f`. No changes to the live-payment gate or other applications.
 
 ## Intended operator workflow
 

@@ -1,12 +1,20 @@
 # OpenPayables — Project Handoff
 
 **Date:** 2026-11-19 (US Pacific)
-**Current version:** C11 accepted and committed at `239962f`. C12 contributor enrollment, review queue and read-only dollar preview WINDOWS ACCEPTED (126/126 automated tests and real empty-queue lookup); awaiting the C12 implementation commit/push.
-**Git baseline:** `28a79a4` on `main` (Checkpoint B); `239962f` on `development` (C11 accepted and pushed).
+**Current version:** GitHub integration v0.1 (C7–C12) implementation complete for a trusted local operator. C12 WINDOWS ACCEPTED: 126/126 automated tests plus real empty-queue lookup; committed/pushed as `5a94518`. A positive end-to-end real merged-PR contribution remains a documented acceptance limitation, not a reason to fabricate activity.
+**Git baseline:** `28a79a4` on `main` (Checkpoint B); `5a94518` on `development` and `origin/development` (C12 accepted and pushed).
 **Remote:** https://github.com/mightymetrika/openpayables
-**Working branch:** `development`; C12 implementation and acceptance documentation staged on the accepted C11 baseline `239962f` (not yet committed). Do not change BlindStats or RandomPlayables.
+**Working branch:** `development`, clean after accepted C12 push. Do not change BlindStats or RandomPlayables. GitHub App is still account-restricted for the existing test installation, not generally available for independent operator installations.
 
-## Checkpoint C12 — contributor enrollment, review queue and read-only dollar preview (WINDOWS ACCEPTED; PENDING COMMIT)
+## Current next step — handoff / targeted acceptance
+
+- **Freeze C7–C12 as a locally validated GitHub v0.1 integration.** Do not retroactively describe synthetic-positive tests as a real merged-PR end-to-end test.
+- When an **existing qualifying merged PR** becomes available in an authorized project repository, perform one controlled real-evidence acceptance: `github sync` → `github review pending` → operator `github enroll` → contributor `github identity verify` → explicit `github approve` → `credit balances` → read-only `distribution preview`. Verify re-sync and repeated approval cannot duplicate credits. Do not manufacture an unrelated PR or automate awards.
+- An app installation on `mightymetrika/openpayables` has been validated, but the shared App is currently installed only there; multi-operator installation, self-service hosted UX, private repositories and LIVE payments are **not** accepted features.
+- **New chat must use an archive/export of `development` at `5a94518` (or later clean documentation-only checkpoint), not the attached old main-branch text dump.** Start from the tracked `PROJECT_HANDOFF.md` and `docs/GITHUB_INTEGRATION_CLOSEOUT_v0.1.md`.
+- After documenting the real-evidence limitation, resume highest-priority MVP work driven by Stripe response and practical operator feedback; avoid feature proliferation. No changes to BlindStats/RandomPlayables, no platform-level pooled money flows.
+
+## Checkpoint C12 — contributor enrollment, review queue and read-only dollar preview (WINDOWS ACCEPTED; COMMITTED `5a94518`)
 
 - `github enroll PROJECT GITHUB_USER_ID CONTRIBUTOR_ID DISPLAY_NAME`: a trusted operator creates or reuses an existing contributor, joins the project and links an immutable GitHub numeric ID **in one PostgreSQL transaction**. Requires existing discovered evidence for that project/user. Identical repeats succeed without duplicate records; conflicting display names or identity reassignments roll back all writes. This is **operator attestation**, NOT authenticated GitHub account ownership.
 - `github review pending PROJECT [OFFSET]`: read-only, project-scoped, paginated (50 items/page) queue of **unapproved** PR-author/reviewer candidates, including source URL, stable GitHub user ID, contributor link and C10 verification status. Approved candidates disappear from the pending queue; original evidence and approval audit records are retained.
@@ -23,7 +31,7 @@
 - **Real local-project check:** `github review pending openpayables-c11-0ecc34cd` returned `pending: []`, `hasMore: false`, `nextOffset: null`, exit code 0. This validates the real empty-queue read, **not** a positive real-world merged-PR candidate or approval. No fake pull request was created.
 - **Financial boundary:** The real review check did not enroll or verify a contributor, award credits, attest funds, create obligations, call Stripe, or enable live payments. The hypothetical 8:3 credits → $8/$3 preview is covered by test fixtures, not a funded real-project distribution.
 
-**NEXT:** Apply this documentation-only acceptance update; commit the **eight staged C12 files** together and push **`development` only**. Confirm a clean working tree; keep `main` unchanged at `28a79a4`. Following the commit, prioritize exercising the integrated operator workflow when real eligible GitHub evidence exists rather than creating artificial PRs or building a speculative web frontend. Stripe eligibility review is still separate; LIVE payments remain disabled.
+**C12 Git checkpoint:** All eight accepted C12 files committed as `5a94518` (`feat: simplify contributor enrollment and review workflow`) and pushed to `origin/development`. Local/remote matched; working tree clean. `main` remains at `28a79a4`. **GitHub v0.1 closeout:** See `docs/GITHUB_INTEGRATION_CLOSEOUT_v0.1.md` for the complete acceptance boundary, real-evidence follow-up, and next-chat workflow. No further infrastructure build is needed solely to close C12. Stripe eligibility review remains separate; LIVE payments remain disabled.
 
 ## Checkpoint C11 — simpler project operator onboarding (WINDOWS + REAL GITHUB ACCEPTED; COMMITTED `239962f`)
 
