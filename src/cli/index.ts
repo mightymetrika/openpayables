@@ -10,8 +10,9 @@ import { OpenPayablesGitHub } from "../storage/postgres/github.js";
 import { GitHubAppClient } from "../github/app.js";
 import { GitHubDeviceFlowClient } from "../github/device-flow.js";
 import { OpenPayablesOperatorSetup } from "../operator/setup.js";
+import { OpenPayablesContributorReview } from "../operator/review.js";
 
-const HELP = `OpenPayables Checkpoint C11 — one operator-owned Stripe TEST platform per project
+const HELP = `OpenPayables Checkpoint C12 — one operator-owned Stripe TEST platform per project
   project setup <project-id> <project-name> <owner/repo>   (GitHub App verified; atomic local setup)
   project setup-status <project-id>                     (read-only local readiness)
   github source add <project-id> <owner/repo>          (public, read-only; verifies repository)
@@ -19,7 +20,9 @@ const HELP = `OpenPayables Checkpoint C11 — one operator-owned Stripe TEST pla
   github app bind <project-id> <owner/repo>         (verify App installation and bind exact repository)
   github app show <project-id> <owner/repo>         (read-only binding metadata)
   github sync <project-id> <owner/repo> <since-YYYY-MM-DD> [max-pr-pages]
-  github candidates <project-id> [offset]            (candidate queue, identity and approval status)
+  github candidates <project-id> [offset]            (all candidates, including approved)
+  github review pending <project-id> [offset]        (unapproved evidence with identity status)
+  github enroll <project-id> <github-user-id> <contributor-id> <display-name>  (atomic operator attestation)
   github identity link <project-id> <github-user-id> <contributor-id>  (operator attestation; immutable)
   github identity show <project-id> <contributor-id>    (read-only C8 link and C10 verification)
   github identity whoami                            (GitHub App Device Flow; no DB write)
@@ -41,6 +44,7 @@ const HELP = `OpenPayables Checkpoint C11 — one operator-owned Stripe TEST pla
   fund import-topup <project-id> <stripe-tu-id>         (TEST Stripe receipt; no top-up created)
   fund recheck <project-id>                             (recheck TEST receipts across same platform)
   fund status <project-id>
+  distribution preview <project-id> <usd-cents>       (hypothetical, read-only; no funding or payouts)
   distribution create <project-id> <period-label> <cents>
   distribution approve <period-uuid>
   distribution show <period-uuid>
@@ -81,6 +85,7 @@ async function main() {
   const finance = new OpenPayablesFinance(pool);
   const github = new OpenPayablesGitHub(pool);
   const setup = new OpenPayablesOperatorSetup(pool);
+  const review = new OpenPayablesContributorReview(pool);
   try {
     let result: unknown;
     const key = `${group} ${command}`;
@@ -185,6 +190,14 @@ async function main() {
             user.githubUserId, user.githubLogin, appId, actor);
         } else throw new Error(HELP);
         break;
+      case "github enroll":
+        required(args, 4);
+        result = await review.enroll(args[0]!, Number(args[1]), args[2]!, args[3]!, operator());
+        break;
+      case "github review":
+        if (args[0] !== "pending" || (args.length !== 2 && args.length !== 3)) throw new Error(HELP);
+        result = await review.pending(args[1]!, args[2] === undefined ? 0 : Number(args[2]));
+        break;
       case "github approve":
         required(args, 5);
         result = await github.approveCandidate(args[0]!, Number(args[1]), args[2]!,
@@ -231,6 +244,10 @@ async function main() {
         required(args, 1); result = await finance.recheckProjectTestFunding(args[0]!, new StripeTestClient(), operator()); break;
       case "fund status":
         required(args, 1); result = await finance.fundingStatus(args[0]!); break;
+      case "distribution preview":
+        required(args, 2);
+        result = await review.preview(args[0]!, Number(args[1]));
+        break;
       case "distribution create":
         required(args, 3); result = await finance.createPeriod(args[0]!, args[1]!, Number(args[2]), operator()); break;
       case "distribution approve":

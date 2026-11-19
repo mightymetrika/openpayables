@@ -1,12 +1,31 @@
 # OpenPayables — Project Handoff
 
 **Date:** 2026-11-19 (US Pacific)
-**Current version:** C11 atomic local operator setup **accepted on Windows and against the real GitHub App; pending C11 commit/push**. C10 accepted and committed as `b481ed4`.
-**Git baseline:** `28a79a4` on `main` (Checkpoint B); `b481ed4` on `development` (C10 accepted).
+**Current version:** C11 accepted and committed at `239962f`. C12 contributor enrollment, review queue and read-only dollar preview WINDOWS ACCEPTED (126/126 automated tests and real empty-queue lookup); awaiting the C12 implementation commit/push.
+**Git baseline:** `28a79a4` on `main` (Checkpoint B); `239962f` on `development` (C11 accepted and pushed).
 **Remote:** https://github.com/mightymetrika/openpayables
-**Working branch:** `development`; C11 changes are staged against clean C10 baseline `b481ed4`, not yet committed. Do not change BlindStats or RandomPlayables.
+**Working branch:** `development`; C12 implementation and acceptance documentation staged on the accepted C11 baseline `239962f` (not yet committed). Do not change BlindStats or RandomPlayables.
 
-## Checkpoint C11 — simpler project operator onboarding (WINDOWS + REAL GITHUB ACCEPTED; PENDING COMMIT)
+## Checkpoint C12 — contributor enrollment, review queue and read-only dollar preview (WINDOWS ACCEPTED; PENDING COMMIT)
+
+- `github enroll PROJECT GITHUB_USER_ID CONTRIBUTOR_ID DISPLAY_NAME`: a trusted operator creates or reuses an existing contributor, joins the project and links an immutable GitHub numeric ID **in one PostgreSQL transaction**. Requires existing discovered evidence for that project/user. Identical repeats succeed without duplicate records; conflicting display names or identity reassignments roll back all writes. This is **operator attestation**, NOT authenticated GitHub account ownership.
+- `github review pending PROJECT [OFFSET]`: read-only, project-scoped, paginated (50 items/page) queue of **unapproved** PR-author/reviewer candidates, including source URL, stable GitHub user ID, contributor link and C10 verification status. Approved candidates disappear from the pending queue; original evidence and approval audit records are retained.
+- `distribution preview PROJECT USD_CENTS`: read-only hypothetical allocation of a specified cents amount using existing lifetime credits and the validated largest-remainder method. Returns integer-cent conservation and readable USD amounts; **does not** assert verified funds, reserve money, consume credits, create obligations, or initiate Stripe activity. An approved distribution uses its own locked snapshot, which may differ from the preview if credits change.
+- Existing `github identity verify` and `github approve` remain the actual user-control and human-approval steps. **Current C8 approval accepts operator-attested links without requiring C10 verification**; the queue makes this distinction visible, but C12 does not silently change the accepted approval policy.
+- No new migration, GitHub API permissions, GitHub App change, Stripe calls, web UI, or live payment path. Eight complete changed files include focused unit/integration tests and `docs/CONTRIBUTOR_REVIEW_WORKFLOW_v0.1.md`.
+
+### C12 acceptance evidence — 2026-11-19 (US Pacific)
+
+- **Windows database:** `npm run db:migrate` succeeded against the dedicated local `openpayables` development database; C12 required no new migration.
+- **Unit checks:** `npm run check` passed **88/88 unit tests**, ESLint, and the TypeScript build. The 38 database tests skipped by this command were run separately.
+- **PostgreSQL integration:** `npm run test:integration` passed **38/38 tests** in the dedicated `openpayables_test` database. Total: **126 passing tests** across both suites. These include positive synthetic-evidence enrollment, immutable identity-link/conflict protection, queue filtering, project isolation, and read-only dollar-preview behavior.
+- **Git validation:** `git diff --check` and `git diff --cached --check` passed; exactly **eight C12 files** were staged. LF-to-CRLF messages are informational on this Windows Git configuration.
+- **Real local-project check:** `github review pending openpayables-c11-0ecc34cd` returned `pending: []`, `hasMore: false`, `nextOffset: null`, exit code 0. This validates the real empty-queue read, **not** a positive real-world merged-PR candidate or approval. No fake pull request was created.
+- **Financial boundary:** The real review check did not enroll or verify a contributor, award credits, attest funds, create obligations, call Stripe, or enable live payments. The hypothetical 8:3 credits → $8/$3 preview is covered by test fixtures, not a funded real-project distribution.
+
+**NEXT:** Apply this documentation-only acceptance update; commit the **eight staged C12 files** together and push **`development` only**. Confirm a clean working tree; keep `main` unchanged at `28a79a4`. Following the commit, prioritize exercising the integrated operator workflow when real eligible GitHub evidence exists rather than creating artificial PRs or building a speculative web frontend. Stripe eligibility review is still separate; LIVE payments remain disabled.
+
+## Checkpoint C11 — simpler project operator onboarding (WINDOWS + REAL GITHUB ACCEPTED; COMMITTED `239962f`)
 
 - New CLI commands `project setup PROJECT_ID NAME owner/repo` and `project setup-status PROJECT_ID` connect existing C7–C10 functions in a practical local operator workflow.
 - **Before DB writes**, verify that the requested public repository exists and that the configured GitHub App has the correct scoped installation and pull-request read access. No public fallback after binding.
@@ -22,7 +41,7 @@
 - **Real GitHub synchronization:** `github sync` for the new project, since `2026-11-01`, returned `authMode: github_app_installation`, expected installation ID, and **zero discovered/new candidates, zero awarded credits, and zero created payment obligations**. This validates authenticated empty-case discovery, not a positive real-world PR import.
 - **Boundaries:** No dummy PR, simulated funding entry, Stripe API call, transfer, bank payout or LIVE payment was needed for C11 acceptance. Existing C7/C9 projects were left alone. The CLI remains a trusted local operator workflow, **not** a hosted multi-tenant onboarding service.
 
-**NEXT:** Apply this documentation-only acceptance update, then commit all eight staged C11 files and push **`development` only**. Keep `main` at `28a79a4`. The next useful slice should connect practical contributor enrollment and review/approval CLI steps without introducing live money movement or a speculative hosted frontend.
+**C11 Git checkpoint:** The eight accepted C11 files were committed as `239962f` (`feat: simplify GitHub App operator project setup`) and pushed to `origin/development`; branch and remote matched, the working tree was clean, and `main` remained at `28a79a4`. C12 builds on this baseline.
 
 ## Checkpoint C10 — contributor-controlled GitHub identity verification (WINDOWS + REAL DEVICE AUTH ACCEPTED; COMMITTED `b481ed4`)
 

@@ -2,9 +2,9 @@
 
 A reusable TypeScript/PostgreSQL package for verified open-source contribution credits, contributor voting, and deterministic revenue-sharing **with actual monetary payment capability as the project goal**.
 
-**Status:** Checkpoints A–C10 validated and committed to `development` (`b481ed4`). **C11 one-command local operator setup passed 84 unit tests, 33 PostgreSQL integration tests, lint/build, and real GitHub App setup/sync acceptance on 2026-11-19; pending commit/push.** C9 installation authentication and C10 contributor Device Flow were independently verified with GitHub. The first Stripe Connect TEST transfer was independently verified on 2026-11-17. No live payments are enabled; BlindStats and RandomPlayables remain unchanged.
+**Status:** Checkpoints A–C11 validated and committed to `development` (`239962f`). **C12 contributor enrollment/review workflow passed 88 unit tests, 38 PostgreSQL integration tests, ESLint, TypeScript build and real-project empty-queue lookup on 2026-11-19; pending C12 commit/push.** C9 installation authentication and C10 contributor Device Flow were independently verified with GitHub. The first Stripe Connect TEST transfer was independently verified on 2026-11-17. No live payments are enabled; BlindStats and RandomPlayables remain unchanged.
 
-## C11 operator quick start — Windows and real GitHub accepted; pending commit
+## C11 operator quick start — Windows and real GitHub accepted; committed `239962f`
 
 The new local `project setup <project-id> <name> <owner/repo>` command checks a public repository and its installed GitHub App **before writing**. It atomically creates the project, four default contribution categories, source registration and installation binding. `project setup-status <project-id>` summarizes local connection and contribution counts. Re-running matching setup is safe; conflicting records fail closed. Neither command moves money or assigns credits. See `docs/OPERATOR_SETUP_v0.1.md` for requirements and the follow-on discovery/approval commands. This is still a trusted single-operator CLI, not a hosted onboarding service. **C11 acceptance (2026-11-19):** 84/84 unit tests, 33/33 PostgreSQL integration tests, lint and TypeScript build passed. A new local project `openpayables-c11-0ecc34cd` was created against the real `mightymetrika/openpayables` installation; repeated identical setup returned `createdNow: false`. Authenticated GitHub sync succeeded (`authMode: github_app_installation`) with zero candidates, credit awards or payment obligations. This does not demonstrate positive real-world PR discovery.
 
@@ -55,6 +55,26 @@ C9 does not yet automate GitHub App creation/installation, import private reposi
 ## Checkpoint C10 — GitHub user identity verification (VALIDATED; COMMITTED `b481ed4`)
 
 C10 adds `github identity whoami`, `github identity verify PROJECT CONTRIBUTOR`, and `github identity show PROJECT CONTRIBUTOR` to the trusted local operator CLI. The device flow lets the **contributor** authorize the GitHub App in their browser; the authenticated numeric GitHub ID must match the existing C8 project identity link before an immutable verification is recorded. Tokens and refresh tokens are never stored. This is evidence of GitHub account control **at verification time**, not legal identity, payment eligibility, or authorization for live funds. See `docs/GITHUB_IDENTITY_VERIFICATION_v0.1.md` for setup, limitations, and Windows commands. **C10 acceptance (2026-11-19):** All 80 unit and 28 PostgreSQL integration tests passed, along with lint, build, migration and whitespace checks. The real GitHub Device Flow `whoami` authorized `mightymetrika` (numeric GitHub ID `134214097`) with `stored=false`. This does **not** itself create a verified project-contributor link; persisted linking was exercised with synthetic integration data. No credit awards, payment obligations or transfers were created. C10 was committed and pushed as `b481ed4` on `development`.
+
+## Checkpoint C12 — trusted operator contributor review (Windows accepted; pending commit)
+
+C12 consolidates enrollment, review and compensation preview into three practical CLI commands, while preserving explicit credit approval and TEST-only payments:
+
+```powershell
+# After project setup and a successful GitHub sync with real candidates:
+npm run cli -- github review pending PROJECT_ID
+npm run cli -- github enroll PROJECT_ID NUMERIC_GITHUB_USER_ID CONTRIBUTOR_ID "Contributor Name"
+# Contributor should separately authenticate control of the linked GitHub account:
+npm run cli -- github identity verify PROJECT_ID CONTRIBUTOR_ID
+# Operator uses the already-validated immutable approval command:
+npm run cli -- github approve PROJECT_ID NUMERIC_REPO_ID CANDIDATE_KEY large "Accepted work"
+# Preview a hypothetical $11.00 pool; NO funding entry or obligation is created:
+npm run cli -- distribution preview PROJECT_ID 1100
+```
+
+`github enroll` makes a trusted **operator-attested** link, not an authenticated identity claim. The pending queue marks unlinked, operator-linked, and GitHub-verified accounts separately. C8 approvals currently require an operator link but do not require C10 verification; operators should check verification evidence as appropriate before awarding credits. The preview is **not** a funded allocation or payment promise. See `docs/CONTRIBUTOR_REVIEW_WORKFLOW_v0.1.md` for limitations and workflow details.
+
+**C12 acceptance (2026-11-19):** All **88 unit tests** and **38 separate PostgreSQL integration tests** passed (126 total), along with database migration check, ESLint, TypeScript build and Git staged-whitespace checks. The existing local project `openpayables-c11-0ecc34cd` returned a successful empty `github review pending` queue (`pending: []`, `hasMore: false`). Positive enrollment, approval and read-only preview pathways used synthetic evidence in the test database; no real merged-PR candidate was available. No credits, payment obligations or transfers were created during the real queue check. Acceptance is recorded, but the C12 implementation commit has not yet been made.
 
 ## Delivered
 - GitHub evidence intake (C7 committed): public repository registration, read-only bounded PR/review discovery, immutable candidates; no automatic credits or payments.
@@ -216,4 +236,4 @@ For projects funded by verified TEST receipts, approval and send automatically c
 
 The CLI is a trusted **single-operator local tool**, not an authenticated public API or a multi-tenant hosted service. No Stripe test transfer can be attempted without a Stripe TEST credential, an enabled connected account, an approved and funded distribution period, and explicit operator execution. Financial data is stored in the `openpayables` PostgreSQL schema; no Supabase, Prisma, Clerk or Next.js coupling.
 
-Use `PROJECT_HANDOFF.md` for the current checkpoint. See `docs/MVP_SPEC_v0.1.md` for the MVP policy. The first reconciled Stripe TEST transfer has now been demonstrated. With the C11 single-command GitHub App setup accepted, the next development work should prioritize a usable contributor enrollment and evidence-review CLI workflow, retaining project isolation. A real merged-PR end-to-end acceptance remains to be observed when suitable activity occurs; do not manufacture a pull request merely to satisfy a checkpoint. Stripe eligibility review continues independently. This does not justify a frontend, tax service, automated per-line compensation, or blindstats integration.
+Use `PROJECT_HANDOFF.md` for the current checkpoint. See `docs/MVP_SPEC_v0.1.md` for the MVP policy. The first reconciled Stripe TEST transfer has now been demonstrated. With the C11 GitHub App setup and C12 contributor enrollment, review queue and dollar preview accepted in Windows testing, the next practical step is to exercise the complete operator workflow when suitable real GitHub evidence becomes available. A real merged-PR end-to-end acceptance remains to be observed; do not manufacture a pull request merely to satisfy a checkpoint. Stripe eligibility review continues independently. This does not justify a frontend, tax service, automated per-line compensation, or blindstats integration.
