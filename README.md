@@ -2,7 +2,7 @@
 
 A reusable TypeScript/PostgreSQL package for verified open-source contribution credits, contributor voting, and deterministic revenue-sharing **with actual monetary payment capability as the project goal**.
 
-**Status:** Checkpoints A through C8 validated and committed to `development` (`cf57959`). C9 GitHub App installation authentication passed Windows validation (71 unit tests, 24 PostgreSQL integration tests, ESLint, build); C9 is staged but not yet committed. The first Stripe Connect TEST transfer was independently verified on 2026-11-17. No live payment capability is enabled. No blindstats or randomplayables databases or applications are modified.
+**Status:** Checkpoints A through C9 validated and committed to `development` (`1fc009a`). C9 GitHub App installation authentication passed Windows validation (71 unit tests, 24 PostgreSQL integration tests, ESLint, build) and an independent real GitHub App installation/synchronization check. The first Stripe Connect TEST transfer was independently verified on 2026-11-17. No live payment capability is enabled. No blindstats or randomplayables databases or applications are modified.
 
 ## Operator-owned Stripe model (C4 — validated and committed)
 
@@ -38,13 +38,15 @@ Approval uses the existing `development` (PR author) or `review` (PR reviewer) c
 
 **C8 does not verify that a contributor controls the named GitHub account.** Identity links are trusted-operator attestations only; future hosted onboarding needs contributor authentication/consent and separate legal/payout identity checks. No Stripe code or live payment capability is changed. **Windows acceptance (2026-11-18):** 64 unit tests, 20 dedicated PostgreSQL integration tests, ESLint, TypeScript build, migration, and staged whitespace check all passed. Positive evidence-to-dollar behavior was tested with synthetic candidate evidence; the real GitHub API scan returned no merged PR candidates, so no actual GitHub award was issued. See `docs/GITHUB_APPROVAL_v0.1.md` for exact commands, limits and tests.
 
-## Checkpoint C9 — GitHub App access (WINDOWS ACCEPTED; PENDING COMMIT)
+## Checkpoint C9 — GitHub App access (WINDOWS + REAL GITHUB ACCEPTED; COMMITTED)
 
 C9 adds an optional, reusable GitHub App installation path. A trusted operator runs `github app bind PROJECT_ID owner/repo` after the repository has been registered and the GitHub App has been installed on that public repository. This verifies the App's installation and creates a read-only **single-repository** installation token, retaining only project-specific App/installation IDs in PostgreSQL. `github app show` displays metadata. Later `github sync` commands with a binding must re-authenticate; revoked or changed installations fail closed rather than falling back to public access.
 
 C9 does not yet automate GitHub App creation/installation, import private repositories, prove contributor ownership of a GitHub identity, or implement hosted onboarding. GitHub App keys are held by the deployment operator and read from a file outside the repository. A hosted service could share one GitHub App across independent projects without sharing Stripe accounts. See `docs/GITHUB_APP_INSTALLATION_v0.1.md` for precise setup, commands, limits and tests.
 
-**C9 Windows acceptance (2026-11-18):** The development migration passed; 71/71 unit tests passed after a one-line test assertion capitalization fix (no production-code change); 24/24 PostgreSQL integration tests, ESLint, and TypeScript build passed. These results validate the mocked authentication and persistence paths only: a real GitHub App has not yet been registered or installed. No Stripe or LIVE payments were made.
+**C9 Windows acceptance (2026-11-18):** The development migration passed; 71/71 unit tests passed after a one-line test assertion capitalization fix (no production-code change); 24/24 PostgreSQL integration tests, ESLint, and TypeScript build passed. C9 was committed and pushed at `1fc009a`.
+
+**C9 real GitHub acceptance (2026-11-18 Pacific):** GitHub App `Mightymetrika OpenPayables` (App ID `5825297`) was installed only on `mightymetrika/openpayables` (installation ID `183507524`), granting read-only metadata and pull-request access. Using project `openpayables-c7-8dcd0ee2`, `github app bind` persisted the expected repository/App/installation IDs and `github app show` confirmed them. A real `github sync` returned `authMode: github_app_installation`, no API error, **0 discovered candidates**, **0 awarded credits**, and **0 payment obligations**. This validates real App authentication and empty discovery, not ingestion of an actual merged PR. The RSA private key remains outside Git; no Stripe or LIVE payments were made.
 
 ## Delivered
 - GitHub evidence intake (C7 committed): public repository registration, read-only bounded PR/review discovery, immutable candidates; no automatic credits or payments.
@@ -206,4 +208,4 @@ For projects funded by verified TEST receipts, approval and send automatically c
 
 The CLI is a trusted **single-operator local tool**, not an authenticated public API or a multi-tenant hosted service. No Stripe test transfer can be attempted without a Stripe TEST credential, an enabled connected account, an approved and funded distribution period, and explicit operator execution. Financial data is stored in the `openpayables` PostgreSQL schema; no Supabase, Prisma, Clerk or Next.js coupling.
 
-Use `PROJECT_HANDOFF.md` for the current checkpoint. See `docs/MVP_SPEC_v0.1.md` for the MVP policy. The first reconciled Stripe TEST transfer has now been demonstrated. The immediate next steps are committing the Windows-accepted C9 implementation, verifying a real GitHub App installation against a selected public repository, and then implementing contributor-controlled GitHub identity verification. Stripe eligibility review continues independently. This does not justify a frontend, tax service, automated per-line compensation, or blindstats integration.
+Use `PROJECT_HANDOFF.md` for the current checkpoint. See `docs/MVP_SPEC_v0.1.md` for the MVP policy. The first reconciled Stripe TEST transfer has now been demonstrated. The immediate next step after recording this real-provider C9 acceptance is implementing contributor-controlled GitHub identity verification; a guided operator onboarding UI remains subsequent work. Stripe eligibility review continues independently. This does not justify a frontend, tax service, automated per-line compensation, or blindstats integration.

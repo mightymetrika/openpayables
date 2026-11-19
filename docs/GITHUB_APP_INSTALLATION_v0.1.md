@@ -1,6 +1,6 @@
 # C9 — GitHub App installation authentication (CLI-first)
 
-**Status:** Windows implementation accepted 2026-11-18 (mocked GitHub API, unit and PostgreSQL integration tests); no real GitHub App registration or installation yet. Pending C9 commit/push.
+**Status:** Windows implementation accepted 2026-11-18 (mocked GitHub API, unit and PostgreSQL integration tests); real GitHub App registration, selected-repository installation and authenticated sync also accepted 2026-11-18 Pacific. C9 committed and pushed at `1fc009a`.
 **Starting point:** accepted C8 at `cf57959` on `development`. `main` remains `28a79a4`.
 
 ## Why this exists
@@ -18,7 +18,7 @@ A hosted OpenPayables deployment could own one GitHub App installation service a
 
 **Not yet included:** private-repository discovery; GitHub App creation/installation via a website; webhook receiver; hosted tenancy or user authentication; contributor-controlled GitHub OAuth claim; any change to contribution points, deterministic allocation, or Stripe payment logic. C8's operator-attested identity links still are not proof of account ownership.
 
-## GitHub App configuration (for a later real API acceptance check)
+## GitHub App configuration (validated with a real provider installation)
 
 Register an App under the GitHub account/organization that will operate the GitHub integration. Configure repository permissions `Metadata: Read` (implicit) and `Pull requests: Read`, without code-write permission. Install it on a **selected public test repository**. Under GitHub's App settings, generate an RSA private key and keep the `.pem` file **outside the repository**, backed up securely. Do not post the private key or installation token to chat, add it to Git, or distribute it to contributor accounts.
 
@@ -54,8 +54,18 @@ C9 does **not** create an App or ask contributors to install anything. Token cre
 - `npm run check`: **71/71 unit tests**, ESLint and TypeScript build passed after a test-only, case-insensitive adjustment to the invalid-RSA-key error-message assertion. The prior single failure was capitalization (`valid` versus `Valid`), not authentication behavior.
 - `npm run test:integration`: **24/24 passed** against the dedicated PostgreSQL integration test database.
 - `git diff --cached --check`: passed with 12 intended C9 files staged. Windows line-ending warnings were informational.
-- **External validation not yet performed:** no GitHub App was created/installed and no App-authenticated real GitHub synchronization has been run. Operator GitHub App registration and public-repository install should be tested separately before claiming that pathway is proven against the provider.
+- **External provider validation was performed separately after this Windows acceptance**, as described below. The unit and database suites themselves used mocked responses.
 - No live Stripe activity, payouts, or app integration occurred.
 
 
 **Provider documentation:** https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/generating-an-installation-access-token-for-a-github-app and https://docs.github.com/en/rest/apps/apps
+
+## Real GitHub provider acceptance — 2026-11-18 Pacific (2026-11-19 UTC)
+
+1. The registered GitHub App is **Mightymetrika OpenPayables**, owned by `@mightymetrika`; **App ID `5825297`**. A GitHub-generated private RSA `.pem` was stored outside the repository in a user-local secret directory. Only its local path was used for the CLI; no private key or tokens belong in Git, logs, or shared messages.
+2. The App was installed only on the selected **public** `mightymetrika/openpayables` repository, with `Metadata: Read` and `Pull requests: Read`; **installation ID `183507524`**.
+3. The existing project `openpayables-c7-8dcd0ee2` was already registered to that repository. `github app bind` succeeded with `boundNow: true` and returned stable **GitHub repo ID `1460710596`**, the expected App ID and installation ID. `github app show` returned matching saved metadata.
+4. A subsequent `github sync openpayables-c7-8dcd0ee2 mightymetrika/openpayables 2026-11-01` succeeded with `authMode: github_app_installation` and the expected installation ID. It returned **0 candidates, 0 credits and 0 obligations**. This is an accepted provider-authentication and empty-discovery check; no positive real-world merged-PR discovery was tested.
+5. No PRs were created, no Stripe calls or transfers were made, no LIVE payments were enabled, and C9's least-privilege and failure-closed design remains in effect.
+
+**Next checkpoint:** contributor-controlled, authenticated GitHub identity claims; continue to require explicit operator approval for contribution credits and retain operator-owned Stripe accounts. Hosted GUI setup, webhooks and private repository discovery are not in C9.

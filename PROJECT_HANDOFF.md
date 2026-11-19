@@ -1,10 +1,10 @@
 # OpenPayables — Project Handoff
 
 **Date:** 2026-11-18 (US Pacific)
-**Current version:** Checkpoints A–C8 committed. C9 GitHub App installation authentication WINDOWS ACCEPTED; pending Git commit/push.
-**Git baseline:** `28a79a4` on `main` (Checkpoint B); `cf57959` on `development` (C8 validated, committed and pushed).
+**Current version:** Checkpoints A–C9 committed. C9 GitHub App installation authentication WINDOWS AND REAL PROVIDER ACCEPTED.
+**Git baseline:** `28a79a4` on `main` (Checkpoint B); `1fc009a` on `development` (C9 validated, committed and pushed).
 **Remote:** https://github.com/mightymetrika/openpayables
-**Working branch:** `development` at accepted C8 commit `cf57959`; C9 code and acceptance documentation staged for commit, not yet pushed. Do not change blindstats.
+**Working branch:** `development` at accepted C9 commit `1fc009a`, clean after push and before this documentation-only acceptance patch. Do not change blindstats.
 
 ## Checkpoint A — validated
 
@@ -168,15 +168,15 @@ C8 was subsequently committed and pushed successfully to `origin/development` as
 
 - The positive **GitHub evidence → explicit operator approval → immutable credits → 8:3 points → $8/$3 TEST allocation** is validated using synthetic evidence in the isolated integration test database. The actual public GitHub scan for `mightymetrika/openpayables` found no eligible merged PRs, so a real positive GitHub import remains untested. A new test PR solely for this checkpoint is not required.
 - GitHub's contributor display of `mncube` reflects Git commit attribution in the repository; it is separate from OpenPayables' contributor identity links, payment identity, and the GitHub account used for authentication/pushing. Do not infer that credits or compensation have been assigned to it.
-- **Next:** finish C9 documentation and Git checkpoint after Windows acceptance. Contributor-controlled GitHub account claims and guided onboarding remain subsequent work. Preserve `main` at `28a79a4`. Stripe's eligibility review remains pending; no LIVE money movement.
+- **Next:** complete and commit the C9 real-GitHub-App acceptance documentation. Then implement contributor-controlled GitHub account claims; guided onboarding remains later work. Preserve `main` at `28a79a4`. Stripe's eligibility review remains pending; no LIVE money movement.
 
-## Checkpoint C9 — reusable GitHub App installation path (WINDOWS ACCEPTED; PENDING COMMIT)
+## Checkpoint C9 — reusable GitHub App installation path (WINDOWS + REAL GITHUB ACCEPTED; COMMITTED `1fc009a`)
 
 - A hosted deployment can operate one GitHub App while independent project operators install it only on repositories they choose. This is **GitHub access only**; every OpenPayables operator retains its own Stripe payment credentials, balances, contributor obligations and financial responsibility. Self-hosted installations can register their own App.
 - `src/github/app.ts` uses the GitHub App's numeric ID and RSA private key from a configured file **outside Git** to create a short-lived RS256 JWT, verify a repository installation and its read permission, mint a short-lived token explicitly restricted to a **single GitHub repository ID** and `pull_requests:read`, and verify the token resolves to the expected immutable public repository ID. Secrets never enter DB or CLI JSON results.
 - New migration `009_checkpoint_c9.sql` adds an immutable, project-scoped installation binding; `github app bind` verifies and binds a registered public source, while `github app show` reports safe metadata. Duplicate matching binds are idempotent; conflicting binds are refused.
 - `github sync` keeps its existing public mode when unbound. **Once App-bound it always checks the installation and uses its scoped token; revocation, permission loss, wrong App or changed installation fails closed, never falls back to public access**. Candidate approval, points and Stripe payment paths remain unchanged.
-- Unit and dedicated PostgreSQL integration tests added. Do not claim a real GitHub App was installed or an external sync validated until actually exercised. **Private repository discovery, GitHub App onboarding UX, authenticated contributor identity claims and GitHub webhooks are not in C9.** See `docs/GITHUB_APP_INSTALLATION_v0.1.md`.
+- Unit and dedicated PostgreSQL integration tests added. The real App installation and authenticated public-repository sync have now also been exercised successfully. **Private repository discovery, GitHub App onboarding UX, authenticated contributor identity claims and GitHub webhooks are not in C9.** See `docs/GITHUB_APP_INSTALLATION_v0.1.md`.
 
 ### C9 Windows acceptance evidence — 2026-11-18
 
@@ -184,10 +184,18 @@ C8 was subsequently committed and pushed successfully to `origin/development` as
 - First `npm run check` run had **70 passing unit tests and 1 failing test assertion**: the malformed-key test expected lowercase `valid GitHub App RSA` but the implementation correctly emitted `Valid GitHub App RSA private key required`. This was an assertion-capitalization mismatch, not evidence of an authentication failure.
 - Corrected only the case-sensitive assertion in `tests/github-app.test.ts`; no application or authentication logic changed. Repeated `npm run check`: **71/71 unit tests passed**, ESLint passed, and TypeScript build passed.
 - `npm run test:integration`: **24/24 PostgreSQL integration tests passed** in the separate `openpayables_test` database. No rerun was needed after the test-only assertion correction.
-- `git diff --cached --check` passed; the **12 intended C9 files** are staged. Git LF/CRLF warnings were informational. C8 baseline remains `cf57959` until the C9 commit; `main` stays `28a79a4`.
-- Mocked GitHub API and temporary RSA key tests support implementation acceptance. **No real GitHub App registration, installation, token minting against GitHub, or App-authenticated repository sync has yet been demonstrated.** No Stripe transfer or live-money movement occurred.
+- `git diff --cached --check` passed; the **12 intended C9 files** were staged. Git LF/CRLF warnings were informational. C9 was committed as `1fc009a` and pushed to `origin/development`; working tree verified clean; `main` stayed `28a79a4`.
+- Mocked GitHub API and temporary RSA key tests support implementation acceptance. A **separate real GitHub App acceptance** was subsequently completed, documented below. No Stripe transfer or live-money movement occurred.
 
-**Next:** commit and push the 12-file C9 checkpoint to `development` after restaging this documentation. Then perform a separate real GitHub App installation acceptance on a selected public repository and proceed toward contributor-controlled GitHub identity verification.
+### C9 real GitHub App acceptance — 2026-11-18 US Pacific (2026-11-19 UTC)
+
+- Registered the **Mightymetrika OpenPayables** GitHub App owned by `@mightymetrika`; numeric **App ID `5825297`**. The generated RSA `.pem` was moved from Downloads to a user-local secret directory outside the Git repository; no private key contents were shared or committed.
+- Installed on **only the selected** public repository `mightymetrika/openpayables`, with **metadata and pull requests read-only**. GitHub reported **installation ID `183507524`**.
+- Using the existing registered C7 local test project `openpayables-c7-8dcd0ee2`, `github app bind` returned `boundNow: true`, **GitHub repo ID `1460710596`**, expected App ID and installation ID. `github app show` independently returned matching persisted binding metadata.
+- `github sync openpayables-c7-8dcd0ee2 mightymetrika/openpayables 2026-11-01` completed successfully via the real GitHub API, returning `authMode: github_app_installation` and `installationId: 183507524`. It reported **0 discovered candidates, 0 credit awards and 0 payment obligations**. The empty candidate scan is a valid authentication/integration result, **not** a positive real-PR discovery/approval test.
+- No GitHub PR was manufactured, no funds or Stripe operations were initiated, and no LIVE payment path was enabled. The key and ephemeral installation tokens must remain private.
+
+**Next:** commit and push this three-file, documentation-only real-provider acceptance checkpoint to `development` while leaving `main` unchanged. Then implement contributor-controlled GitHub account ownership verification, without reworking validated credit and allocation paths. Stripe's eligibility assessment remains separate and pending.
 
 
 Local operator databases: `127.0.0.1:5432/openpayables` (development) and `127.0.0.1:5432/openpayables_test` (dedicated test). The CLI is a trusted single-operator tool; do not connect it to other apps' Production databases. Keep all secrets out of Git/chat.
