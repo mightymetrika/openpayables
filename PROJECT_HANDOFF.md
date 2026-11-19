@@ -1,18 +1,16 @@
 # OpenPayables — Project Handoff
 
-**Date:** 2026-11-19 (US Pacific)
-**Current version:** GitHub integration v0.1 (C7–C12) implementation complete for a trusted local operator. C12 WINDOWS ACCEPTED: 126/126 automated tests plus real empty-queue lookup; committed/pushed as `5a94518`. A positive end-to-end real merged-PR contribution remains a documented acceptance limitation, not a reason to fabricate activity.
-**Git baseline:** `28a79a4` on `main` (Checkpoint B); `5a94518` on `development` and `origin/development` (C12 accepted and pushed).
-**Remote:** https://github.com/mightymetrika/openpayables
-**Working branch:** `development`, clean after accepted C12 push. Do not change BlindStats or RandomPlayables. GitHub App is still account-restricted for the existing test installation, not generally available for independent operator installations.
+## Checkpoint C13 — operator revenue-pool basis (WINDOWS VALIDATED)
 
-## Current next step — handoff / targeted acceptance
+**Scope:** One immutable, operator-attested revenue-pool calculation feeding the existing draft/approval workflow. `distribution create-revenue` records gross receipts, fees, costs, reserves, the contributor share in basis points, a policy reference and a receipt-ledger reference. Integer-cent arithmetic uses floor rounding. `distribution show` exposes the basis. Existing prefunded `distribution create`, verified/attested TEST funding separation, approval locks, Stripe guards, and governance remain unchanged. No revenue import, real-money payments, web UI, or GitHub changes. See `docs/REVENUE_POOL_BASIS_v0.1.md`.
 
-- **Freeze C7–C12 as a locally validated GitHub v0.1 integration.** Do not retroactively describe synthetic-positive tests as a real merged-PR end-to-end test.
-- When an **existing qualifying merged PR** becomes available in an authorized project repository, perform one controlled real-evidence acceptance: `github sync` → `github review pending` → operator `github enroll` → contributor `github identity verify` → explicit `github approve` → `credit balances` → read-only `distribution preview`. Verify re-sync and repeated approval cannot duplicate credits. Do not manufacture an unrelated PR or automate awards.
-- An app installation on `mightymetrika/openpayables` has been validated, but the shared App is currently installed only there; multi-operator installation, self-service hosted UX, private repositories and LIVE payments are **not** accepted features.
-- **New chat must use an archive/export of `development` at `5a94518` (or later clean documentation-only checkpoint), not the attached old main-branch text dump.** Start from the tracked `PROJECT_HANDOFF.md` and `docs/GITHUB_INTEGRATION_CLOSEOUT_v0.1.md`.
-- After documenting the real-evidence limitation, resume highest-priority MVP work driven by Stripe response and practical operator feedback; avoid feature proliferation. No changes to BlindStats/RandomPlayables, no platform-level pooled money flows.
+**Windows acceptance, 2026-11-19 (US Pacific):** `npm run db:migrate` succeeded against the dedicated OpenPayables development database. `npm run check` passed **92/92 unit tests**, ESLint, and TypeScript build. `npm run test:integration` passed **40/40 dedicated PostgreSQL tests** (132/132 combined). `git diff --check` passed. The two new C13 PostgreSQL tests exercise a fresh isolated project, draft creation and readback, insufficient-funding rejection, TEST-attested funding and approval, immutable basis, duplicate-label rejection, and project isolation. No real Stripe transfer, live payment, bank payout, or manual positive GitHub PR approval was performed. A separate real-project CLI smoke test for `create-revenue` was not performed; the command path and finance behavior were covered by the automated checks.
+
+**Git baseline:** C13 patch applied to `development` at `e7dcd7f208402e8d3ef8c984dc060d082f11bf29` (GitHub v0.1 documentation closeout). Earlier C12 implementation was committed as `5a94518`; `main` remains intentionally unchanged at `28a79a4`. Refer to Git history for the final C13 commit ID. The C7–C12 GitHub integration milestone remains closed, with positive real merged-PR acceptance still outstanding.
+
+**Current focus toward MVP release:** Treat C13's revenue basis as sufficient for the current TEST-mode release; no speculative C14 accounting subsystem. Return to Stripe operator-owned eligibility and the practical installation/management experience for independent operators and contributors. Prioritize the minimum usable operator/contributor interface or API integration surface, deployment instructions, and a release acceptance pass. Keep LIVE payments disabled until separately authorized and compliant. Do not change BlindStats or RandomPlayables, and do not make OpenPayables a pooled payment intermediary. A real merged-PR acceptance test may be done when legitimate evidence is available, but must not block unrelated MVP progress or be manufactured merely for test coverage.
+
+## Historical checkpoints
 
 ## Checkpoint C12 — contributor enrollment, review queue and read-only dollar preview (WINDOWS ACCEPTED; COMMITTED `5a94518`)
 

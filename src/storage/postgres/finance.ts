@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { Pool, PoolClient } from "pg";
 import { allocateCents } from "../../core/allocation.js";
+import { calculateRevenuePool, type RevenuePoolInputs } from "../../core/pool.js";
 import type { PaymentProvider, ProviderTransfer, TransferInstruction, TestFundingProvider, TestTopupReceipt, TestTopupObservation, TestConnectedPayoutProvider, TestPayoutStatus, TestPayoutTraceProvider } from "../../payments/provider.js";
 
 function nonblank(value: string, label: string): string {
@@ -363,6 +364,40 @@ export class OpenPayablesFinance {
     return result.rows[0];
   }
 
+  /** Atomic draft + immutable arithmetic basis; funding must still be approved separately. */
+  async createRevenuePeriod(
+    projectId: string, label: string, inputs: RevenuePoolInputs,
+    policyReference: string, receiptReference: string, operator: string,
+  ) {
+    const calculation = calculateRevenuePool(inputs);
+    projectId = nonblank(projectId, "project");
+    label = nonblank(label, "label");
+    policyReference = nonblank(policyReference, "policy reference");
+    receiptReference = nonblank(receiptReference, "receipt reference");
+    operator = nonblank(operator, "operator");
+    const period = await this.transaction(async (db) => {
+      const inserted = await db.query(
+        `INSERT INTO openpayables.distribution_periods(id,project_id,label,amount_cents,created_by)
+         VALUES($1,$2,$3,$4,$5) RETURNING *`,
+        [randomUUID(), projectId, label, calculation.poolCents, operator],
+      );
+      const id: string = inserted.rows[0].id;
+      await db.query(
+        `INSERT INTO openpayables.distribution_pool_bases
+          (period_id,policy_reference,receipt_reference,gross_receipts_cents,fee_cents,
+           cost_cents,reserve_cents,contributor_share_bps,net_cents,pool_cents,attested_by)
+         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+        [id, policyReference, receiptReference, calculation.grossReceiptsCents,
+         calculation.feeCents, calculation.costCents, calculation.reserveCents,
+         calculation.contributorShareBasisPoints, calculation.netCents,
+         calculation.poolCents, operator],
+      );
+      return inserted.rows[0];
+    });
+    return { ...period, basis: { ...calculation, policyReference, receiptReference,
+      evidenceKind: "operator_attested_revenue" } };
+  }
+
   async approvePeriod(
     periodId: string, operator: string,
     provider?: TestFundingProvider & Pick<PaymentProvider, "platformAccountId">,
@@ -448,8 +483,22 @@ export class OpenPayablesFinance {
     const obligations = await this.pool.query(
       "SELECT * FROM openpayables.distribution_obligations WHERE period_id=$1 ORDER BY contributor_id", [periodId],
     );
+    const basis = await this.pool.query(
+      "SELECT * FROM openpayables.distribution_pool_bases WHERE period_id=$1", [periodId],
+    );
+    const b = basis.rows[0];
     return {
       period: period.rows[0],
+      revenueBasis: b ? {
+        evidenceKind: String(b.basis_kind), policyReference: String(b.policy_reference),
+        receiptReference: String(b.receipt_reference),
+        grossReceiptsCents: safeNumber(b.gross_receipts_cents),
+        feeCents: safeNumber(b.fee_cents), costCents: safeNumber(b.cost_cents),
+        reserveCents: safeNumber(b.reserve_cents),
+        contributorShareBasisPoints: safeNumber(b.contributor_share_bps),
+        netCents: safeNumber(b.net_cents), poolCents: safeNumber(b.pool_cents),
+        attestedBy: String(b.attested_by), attestedAt: b.attested_at,
+      } : null,
       snapshot: snapshot.rows.map((x) => ({ contributorId: x.contributor_id, points: safeNumber(x.points), amountCents: safeNumber(x.amount_cents) })),
       obligations: obligations.rows.map(mapObligation),
     };

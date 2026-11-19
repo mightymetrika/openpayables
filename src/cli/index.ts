@@ -45,7 +45,8 @@ const HELP = `OpenPayables Checkpoint C12 — one operator-owned Stripe TEST pla
   fund recheck <project-id>                             (recheck TEST receipts across same platform)
   fund status <project-id>
   distribution preview <project-id> <usd-cents>       (hypothetical, read-only; no funding or payouts)
-  distribution create <project-id> <period-label> <cents>
+  distribution create <project-id> <period-label> <cents>       (manual TEST/prefunded pool)
+  distribution create-revenue <project-id> <period-label> <gross-cents> <fee-cents> <cost-cents> <reserve-cents> <share-bps> <policy-ref> <receipt-ref>
   distribution approve <period-uuid>
   distribution show <period-uuid>
   stripe account create <project-id> <contributor-id> <email>
@@ -250,6 +251,14 @@ async function main() {
         break;
       case "distribution create":
         required(args, 3); result = await finance.createPeriod(args[0]!, args[1]!, Number(args[2]), operator()); break;
+      case "distribution create-revenue":
+        required(args, 9);
+        result = await finance.createRevenuePeriod(args[0]!, args[1]!, {
+          grossReceiptsCents: Number(args[2]), feeCents: Number(args[3]),
+          costCents: Number(args[4]), reserveCents: Number(args[5]),
+          contributorShareBasisPoints: Number(args[6]),
+        }, args[7]!, args[8]!, operator());
+        break;
       case "distribution approve":
         required(args, 1);
         result = await finance.approvePeriod(args[0]!, operator(),
