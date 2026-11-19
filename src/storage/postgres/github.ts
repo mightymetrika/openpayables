@@ -194,11 +194,14 @@ export class OpenPayablesGitHub {
       `SELECT gc.github_repo_id,gc.candidate_key,gc.kind,gc.pull_id,gc.pull_number,gc.github_user_id,
               gc.github_login,gc.title,gc.source_url,gc.merged_at,gc.review_ids,gc.last_review_at,gc.discovered_at,
        gi.contributor_id AS linked_contributor_id,
+       gv.verified_at AS identity_verified_at,
        ga.credit_event_id AS award_id,
        ga.award_size AS approved_size
        FROM openpayables.github_candidates gc
        LEFT JOIN openpayables.github_identity_links gi
          ON gi.project_id=gc.project_id AND gi.github_user_id=gc.github_user_id
+       LEFT JOIN openpayables.github_identity_verifications gv
+         ON gv.project_id=gc.project_id AND gv.github_user_id=gc.github_user_id
        LEFT JOIN openpayables.github_candidate_approvals ga
          ON ga.project_id=gc.project_id AND ga.github_repo_id=gc.github_repo_id
            AND ga.candidate_key=gc.candidate_key
@@ -213,12 +216,13 @@ export class OpenPayablesGitHub {
       reviewIds: r.review_ids as number[], lastReviewAt: r.last_review_at as Date | null,
       discoveredAt: r.discovered_at as Date,
       linkedContributorId: r.linked_contributor_id as string | null,
+      identityVerifiedAt: r.identity_verified_at as Date | null,
       awardId: r.award_id as string | null,
       approvedSize: r.approved_size as AwardSize | null,
     }));
     return { projectId, offset, candidates: data, hasMore: result.rows.length > 100,
       nextOffset: result.rows.length > 100 ? offset + 100 : null,
-      note: "Identity links are operator-attested, not proof of GitHub ownership; only explicit approval creates credits." };
+      note: "C8 links are operator-attested; C10 GitHub authorization is separately recorded when completed. Only operator approval creates credits." };
   }
 
   /** A trusted operator explicitly links a stable numeric GitHub user ID to an existing project member. */
@@ -256,6 +260,83 @@ export class OpenPayablesGitHub {
       return { projectId, githubUserId: id, contributorId, linkedNow: inserted.rowCount === 1,
         linkedBy: existing.rows[0].linked_by as string,
         note: "Operator-attested identity association. GitHub user ownership is not verified by C8." };
+    });
+  }
+
+  /** Read project identity state before prompting the user to authorize an account. */
+  async identityStatus(project: string, contributor: string) {
+    const projectId = required(project, "project ID");
+    const contributorId = required(contributor, "contributor ID");
+    const result = await this.pool.query(
+      `SELECT l.github_user_id,l.linked_by,l.linked_at,
+              v.github_login_at_verification,v.app_id,v.verified_at,v.verification_method
+       FROM openpayables.github_identity_links l
+       LEFT JOIN openpayables.github_identity_verifications v
+         ON v.project_id=l.project_id AND v.github_user_id=l.github_user_id
+       WHERE l.project_id=$1 AND l.contributor_id=$2`, [projectId, contributorId],
+    );
+    if (result.rowCount === 0) return { projectId, contributorId, linked: false, verified: false };
+    if (result.rowCount !== 1) throw new Error("Conflicting project identity links");
+    const item = result.rows[0];
+    return { projectId, contributorId, linked: true,
+      githubUserId: Number(item.github_user_id), linkedBy: String(item.linked_by),
+      linkedAt: item.linked_at as Date, verified: item.verified_at !== null,
+      verifiedAt: item.verified_at as Date | null,
+      githubLoginAtVerification: item.github_login_at_verification as string | null,
+      verifiedAppId: item.app_id === null ? null : Number(item.app_id),
+      verificationMethod: item.verification_method as string | null };
+  }
+
+  /** Save the fact that GitHub's /user resolved to the already linked numeric ID.
+   *  Never accepts or stores the OAuth access token or refresh token.
+   */
+  async verifyIdentity(project: string, contributor: string, githubUserId: number,
+    githubLogin: string, appId: number, operator: string) {
+    const projectId = required(project, "project ID");
+    const contributorId = required(contributor, "contributor ID");
+    const id = positiveGitHubId(githubUserId, "GitHub user ID");
+    const app = positiveGitHubId(appId, "GitHub App ID");
+    const login = required(githubLogin, "GitHub login");
+    const actor = required(operator, "operator");
+    if (!/^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/.test(login)) throw new Error("Invalid authenticated GitHub login");
+    return this.transaction(async (db) => {
+      // The existing C8 link is the immutable claim; device authorization proves
+      // control of exactly that GitHub user ID, not an operator-selected substitute.
+      const links = await db.query(
+        `SELECT github_user_id FROM openpayables.github_identity_links
+         WHERE project_id=$1 AND contributor_id=$2`, [projectId, contributorId],
+      );
+      if (links.rowCount !== 1) throw new Error("Link an existing project GitHub identity before verification");
+      if (Number(links.rows[0].github_user_id) !== id) {
+        throw new Error("Authenticated GitHub user does not match the project's immutable identity link");
+      }
+      const bound = await db.query(
+        `SELECT 1 FROM openpayables.github_app_source_bindings
+         WHERE project_id=$1 AND app_id=$2 LIMIT 1`, [projectId, app],
+      );
+      if (bound.rowCount !== 1) throw new Error("GitHub App is not bound to this project");
+      const added = await db.query(
+        `INSERT INTO openpayables.github_identity_verifications
+         (project_id,github_user_id,contributor_id,github_login_at_verification,app_id,initiated_by)
+         VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT DO NOTHING RETURNING github_user_id`,
+        [projectId, id, contributorId, login, app, actor],
+      );
+      const current = await db.query(
+        `SELECT github_user_id,contributor_id,app_id,github_login_at_verification,verified_at,initiated_by
+         FROM openpayables.github_identity_verifications
+         WHERE project_id=$1 AND (github_user_id=$2 OR contributor_id=$3)`,
+        [projectId, id, contributorId],
+      );
+      if (current.rowCount !== 1 || Number(current.rows[0].github_user_id) !== id ||
+          current.rows[0].contributor_id !== contributorId || Number(current.rows[0].app_id) !== app) {
+        throw new Error("Conflicting immutable GitHub verification; no reassignment allowed");
+      }
+      return { projectId, contributorId, githubUserId: id,
+        githubLoginAtVerification: String(current.rows[0].github_login_at_verification),
+        appId: app, verificationMethod: "github_app_device_flow",
+        verifiedAt: current.rows[0].verified_at as Date,
+        initiatedBy: String(current.rows[0].initiated_by), verifiedNow: added.rowCount === 1,
+        creditsAwarded: 0, paymentObligationsCreated: 0 };
     });
   }
 

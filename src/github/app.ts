@@ -100,6 +100,19 @@ export class GitHubAppClient {
     return response.json() as Promise<unknown>;
   }
 
+  /** Verify that a public OAuth Client ID actually belongs to this RSA-authenticated App.
+   *  Prevents a different GitHub App's Device Flow from producing C10 evidence.
+   */
+  async assertClientId(clientId: string): Promise<void> {
+    if (!/^[-A-Za-z0-9_]{10,128}$/.test(clientId)) {
+      throw new Error("Valid GitHub App Client ID required");
+    }
+    const app = object(await this.request("/app", this.jwt(), "GET"));
+    if (positiveId(app.id, "App ID") !== this.appId || app.client_id !== clientId) {
+      throw new Error("GitHub App Client ID does not match the authenticated GitHub App");
+    }
+  }
+
   /** Authenticate to one previously registered *public* repository, never more. */
   async authorizeRepository(repo: GitHubRepository, expected?: GitHubAppBinding): Promise<GitHubAppSession> {
     if (!Number.isSafeInteger(repo.id) || repo.id <= 0 || repo.private !== false) {

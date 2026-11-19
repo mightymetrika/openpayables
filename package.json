@@ -12,7 +12,7 @@
     "cli": "tsx src/cli/index.ts",
     "db:migrate": "tsx src/storage/postgres/migrate.ts",
     "test": "vitest run",
-    "test:integration": "vitest run tests/postgres.integration.test.ts tests/finance.integration.test.ts tests/github.integration.test.ts tests/github-approval.integration.test.ts tests/github-app.integration.test.ts",
+    "test:integration": "vitest run tests/postgres.integration.test.ts tests/finance.integration.test.ts tests/github.integration.test.ts tests/github-approval.integration.test.ts tests/github-app.integration.test.ts tests/github-identity-verification.integration.test.ts",
     "lint": "eslint .",
     "build": "tsc -p tsconfig.json",
     "check": "npm test && npm run lint && npm run build",

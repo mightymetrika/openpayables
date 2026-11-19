@@ -114,6 +114,19 @@ describe("C9 least-privilege GitHub App installation authentication", () => {
     await expect(mockClient().api.authorizeRepository({ ...repo, fullName: "bad/path/extra" })).rejects.toThrow();
   });
 
+  it("C10 checks the Device Flow Client ID against the actual signed GitHub App identity", async () => {
+    const valid = mockClient((url) => {
+      expect(url).toBe("https://api.github.com/app");
+      return ok({ id: appId, client_id: "Iv23ThisAppClient" });
+    });
+    await expect(valid.api.assertClientId("Iv23ThisAppClient")).resolves.toBeUndefined();
+    expect(valid.fetcher).toHaveBeenCalledTimes(1);
+    const bad = mockClient(() => ok({ id: appId, client_id: "Iv23DifferentApp" }));
+    await expect(bad.api.assertClientId("Iv23ThisAppClient")).rejects.toThrow(/does not match/);
+    const wrongId = mockClient(() => ok({ id: 222222, client_id: "Iv23ThisAppClient" }));
+    await expect(wrongId.api.assertClientId("Iv23ThisAppClient")).rejects.toThrow(/does not match/);
+  });
+
   it("fails closed on GitHub errors and never includes secrets in error messages", async () => {
     const { api } = mockClient(() => new Response("secret-token-in-body", { status: 403 }));
     await expect(api.authorizeRepository(repo)).rejects.toThrow(/403/);

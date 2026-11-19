@@ -8,8 +8,9 @@ import { StripeTestClient } from "../payments/stripe/test-client.js";
 import { GitHubPublicClient, parseMaxPages, parsePublicRepository, parseSince } from "../github/discovery.js";
 import { OpenPayablesGitHub } from "../storage/postgres/github.js";
 import { GitHubAppClient } from "../github/app.js";
+import { GitHubDeviceFlowClient } from "../github/device-flow.js";
 
-const HELP = `OpenPayables Checkpoint C9 — one operator-owned Stripe TEST platform per project
+const HELP = `OpenPayables Checkpoint C10 — one operator-owned Stripe TEST platform per project
   github source add <project-id> <owner/repo>          (public, read-only; verifies repository)
   github source list <project-id>
   github app bind <project-id> <owner/repo>         (verify App installation and bind exact repository)
@@ -17,6 +18,9 @@ const HELP = `OpenPayables Checkpoint C9 — one operator-owned Stripe TEST plat
   github sync <project-id> <owner/repo> <since-YYYY-MM-DD> [max-pr-pages]
   github candidates <project-id> [offset]            (candidate queue, identity and approval status)
   github identity link <project-id> <github-user-id> <contributor-id>  (operator attestation; immutable)
+  github identity show <project-id> <contributor-id>    (read-only C8 link and C10 verification)
+  github identity whoami                            (GitHub App Device Flow; no DB write)
+  github identity verify <project-id> <contributor-id>  (GitHub App Device Flow; user controls linked account)
   github approve <project-id> <github-repo-id> <candidate-key> <small|medium|large> <reason>
   project create <project-id> <name>
   contributor create <contributor-id> <display-name>
@@ -120,9 +124,47 @@ async function main() {
         break;
       }
       case "github identity":
-        if (args[0] !== "link") throw new Error(HELP);
-        required(args, 4);
-        result = await github.linkIdentity(args[1]!, Number(args[2]), args[3]!, operator());
+        if (args[0] === "link") {
+          required(args, 4);
+          result = await github.linkIdentity(args[1]!, Number(args[2]), args[3]!, operator());
+        } else if (args[0] === "show") {
+          required(args, 3);
+          result = await github.identityStatus(args[1]!, args[2]!);
+        } else if (args[0] === "whoami") {
+          required(args, 1);
+          const appClientId = process.env.OPENPAYABLES_GITHUB_APP_CLIENT_ID ?? "";
+          await GitHubAppClient.fromEnv().assertClientId(appClientId);
+          const user = await new GitHubDeviceFlowClient(appClientId).authenticate((prompt) => {
+            console.error(`Open ${prompt.verificationUri} in your OWN GitHub session`);
+            console.error(`Enter code: ${prompt.userCode} (expires in ${prompt.expiresInSeconds} seconds)`);
+            console.error("Authorize only the Mightymetrika OpenPayables App that you recognize.");
+          });
+          result = { ...user, verifiedBy: "github_app_device_flow", stored: false,
+            note: "Authenticated GitHub ID only. No project identity is linked or verified by whoami." };
+        } else if (args[0] === "verify") {
+          required(args, 3);
+          const actor = operator();
+          const status = await github.identityStatus(args[1]!, args[2]!);
+          if (!status.linked) throw new Error("Link the project contributor to discovered GitHub evidence first");
+          if (status.verified) {
+            result = { ...status, verifiedNow: false, note: "Already verified; no additional GitHub authorization needed" };
+            break;
+          }
+          const appId = Number(process.env.OPENPAYABLES_GITHUB_APP_ID);
+          if (!Number.isSafeInteger(appId) || appId <= 0) {
+            throw new Error("Set OPENPAYABLES_GITHUB_APP_ID to the bound App's numeric ID");
+          }
+          const appClientId = process.env.OPENPAYABLES_GITHUB_APP_CLIENT_ID ?? "";
+          await GitHubAppClient.fromEnv().assertClientId(appClientId);
+          const user = await new GitHubDeviceFlowClient(appClientId).authenticate((prompt) => {
+            // Print only the public user code and official URL; never print device or access tokens.
+            console.error(`Contributor: open ${prompt.verificationUri} in your OWN GitHub session`);
+            console.error(`Enter code: ${prompt.userCode} (expires in ${prompt.expiresInSeconds} seconds)`);
+            console.error("Approve only if this is your own GitHub account and the App is Mightymetrika OpenPayables.");
+          });
+          result = await github.verifyIdentity(args[1]!, args[2]!,
+            user.githubUserId, user.githubLogin, appId, actor);
+        } else throw new Error(HELP);
         break;
       case "github approve":
         required(args, 5);

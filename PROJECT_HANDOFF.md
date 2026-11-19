@@ -1,10 +1,29 @@
 # OpenPayables — Project Handoff
 
-**Date:** 2026-11-18 (US Pacific)
-**Current version:** Checkpoints A–C9 committed. C9 GitHub App installation authentication WINDOWS AND REAL PROVIDER ACCEPTED.
-**Git baseline:** `28a79a4` on `main` (Checkpoint B); `1fc009a` on `development` (C9 validated, committed and pushed).
+**Date:** 2026-11-19 (US Pacific)
+**Current version:** Checkpoints A–C9 committed. **C10 contributor-controlled GitHub identity verification accepted in Windows tests and real GitHub `whoami`; awaiting C10 source checkpoint commit.**
+**Git baseline:** `28a79a4` on `main` (Checkpoint B); `e8afaf3` on `development` (C9 real GitHub acceptance docs committed and pushed).
 **Remote:** https://github.com/mightymetrika/openpayables
-**Working branch:** `development` at accepted C9 commit `1fc009a`, clean after push and before this documentation-only acceptance patch. Do not change blindstats.
+**Working branch:** `development` at C9 `e8afaf3` with 14 C10 implementation files staged and passing validation; acceptance documentation update and C10 commit/push still pending. Do not change blindstats.
+
+## Checkpoint C10 — contributor-controlled GitHub identity verification (WINDOWS + REAL DEVICE AUTH ACCEPTED; PENDING COMMIT)
+
+- GitHub App **Device Flow** generates a short-lived user access token used once to query authenticated `GET /user`. The user enters the short code at GitHub; no user OAuth token or refresh token is stored. The App ID and public Client ID are distinct. A signed `GET /app` verifies their correspondence before any device authorization.
+- `github identity whoami` performs a no-database-write device-flow smoke check, useful because the actual C7 project has no merged PR candidates.
+- `github identity verify PROJECT CONTRIBUTOR` requires the authenticated GitHub numeric ID to **match** the existing immutable C8 operator-attested identity link and requires this App to be bound to the project. It creates a unique, immutable PostgreSQL verification record; `github identity show` and the candidate queue show this separate verification evidence.
+- Existing C8 credit approvals remain operator-controlled and cannot be silently reassigned. C10 adds evidence of account control at a point in time; it does not prove legal identity or authorize live payments. No changes to Stripe, BlindStats or RandomPlayables.
+- New migration `010_checkpoint_c10.sql`, adapter `src/github/device-flow.ts`, CLI support, unit/integration tests, and `docs/GITHUB_IDENTITY_VERIFICATION_v0.1.md`.
+### C10 acceptance evidence — 2026-11-19 (US Pacific)
+
+- **GitHub App settings:** Device Flow enabled for the existing Mightymetrika OpenPayables App (`5825297`); OAuth-on-installation remains off. No expanded repository permissions, callbacks or webhooks were required.
+- **Windows migration:** `npm run db:migrate` completed successfully against the dedicated OpenPayables development PostgreSQL database.
+- **Windows tests:** `npm run check` passed **80/80 unit tests**, ESLint and TypeScript build. The 28 database tests skipped by that command were run separately: `npm run test:integration` passed **28/28 PostgreSQL integration tests** against the dedicated `openpayables_test` database.
+- **Git checks:** `git diff --check` and `git diff --cached --check` passed; 14 intended C10 implementation files staged. Windows LF/CRLF warnings were informational.
+- **Real GitHub authentication:** `github identity whoami` completed the GitHub App Device Flow. GitHub's authenticated `/user` returned `githubLogin=mightymetrika` and stable `githubUserId=134214097`, with `verifiedBy=github_app_device_flow` and **`stored=false`**. No temporary device code, OAuth token, or private key is recorded in this handoff.
+- **Scope of evidence:** The real `whoami` flow confirms GitHub account control, **not** a persisted project contributor verification; `whoami` makes no identity-record write. The exact C8-link-to-C10-verification positive path and adverse cases passed in the PostgreSQL integration suite using test data. The public C7 scan has no qualifying merged PRs and no real project-linked verification was performed. No test PR was created just to satisfy acceptance.
+- **No financial side effects:** No credits, monetary obligations, Stripe funds, transfers or bank payouts were created or modified during the real `whoami` test. Stripe live approval remains pending; live payment keys are still disabled.
+
+**NEXT:** Apply this documentation-only C10 acceptance patch, re-stage the updated three files, confirm all 14 intended files and whitespace validation, commit and push C10 on `development` only. Keep `main` at `28a79a4`. Then prioritize the next practical GitHub onboarding/operability MVP slice, avoiding unnecessary test-only PRs.
 
 ## Checkpoint A — validated
 
@@ -168,7 +187,7 @@ C8 was subsequently committed and pushed successfully to `origin/development` as
 
 - The positive **GitHub evidence → explicit operator approval → immutable credits → 8:3 points → $8/$3 TEST allocation** is validated using synthetic evidence in the isolated integration test database. The actual public GitHub scan for `mightymetrika/openpayables` found no eligible merged PRs, so a real positive GitHub import remains untested. A new test PR solely for this checkpoint is not required.
 - GitHub's contributor display of `mncube` reflects Git commit attribution in the repository; it is separate from OpenPayables' contributor identity links, payment identity, and the GitHub account used for authentication/pushing. Do not infer that credits or compensation have been assigned to it.
-- **Next:** complete and commit the C9 real-GitHub-App acceptance documentation. Then implement contributor-controlled GitHub account claims; guided onboarding remains later work. Preserve `main` at `28a79a4`. Stripe's eligibility review remains pending; no LIVE money movement.
+- **Historical note (C8):** Subsequent C9 GitHub App acceptance was completed and documented at `e8afaf3`. C10 contributor authorization is the next active implementation. Preserve `main` at `28a79a4`; no LIVE money movement.
 
 ## Checkpoint C9 — reusable GitHub App installation path (WINDOWS + REAL GITHUB ACCEPTED; COMMITTED `1fc009a`)
 
@@ -195,7 +214,7 @@ C8 was subsequently committed and pushed successfully to `origin/development` as
 - `github sync openpayables-c7-8dcd0ee2 mightymetrika/openpayables 2026-11-01` completed successfully via the real GitHub API, returning `authMode: github_app_installation` and `installationId: 183507524`. It reported **0 discovered candidates, 0 credit awards and 0 payment obligations**. The empty candidate scan is a valid authentication/integration result, **not** a positive real-PR discovery/approval test.
 - No GitHub PR was manufactured, no funds or Stripe operations were initiated, and no LIVE payment path was enabled. The key and ephemeral installation tokens must remain private.
 
-**Next:** commit and push this three-file, documentation-only real-provider acceptance checkpoint to `development` while leaving `main` unchanged. Then implement contributor-controlled GitHub account ownership verification, without reworking validated credit and allocation paths. Stripe's eligibility assessment remains separate and pending.
+**C9 acceptance documentation committed:** `e8afaf3` on `development`, pushed and clean. Next active checkpoint: C10, contributor-controlled GitHub account verification, without reworking the C8 credit and allocation paths. Stripe's eligibility assessment remains separate and pending.
 
 
 Local operator databases: `127.0.0.1:5432/openpayables` (development) and `127.0.0.1:5432/openpayables_test` (dedicated test). The CLI is a trusted single-operator tool; do not connect it to other apps' Production databases. Keep all secrets out of Git/chat.
