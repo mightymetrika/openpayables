@@ -80,6 +80,60 @@ export class OpenPayablesGitHub {
       fullName: String(results.rows[0].full_name), private: false };
   }
 
+
+  /** An App installation belongs to an explicitly registered project repository, never a global default. */
+  async bindAppInstallation(project: string, repo: GitHubRepository,
+    binding: { appId: number; installationId: number }, operator: string) {
+    const projectId = required(project, "project ID");
+    const actor = required(operator, "operator");
+    for (const value of [repo.id, binding.appId, binding.installationId]) {
+      if (!Number.isSafeInteger(value) || value <= 0) throw new Error("Invalid GitHub App binding identifier");
+    }
+    return this.transaction(async (db) => {
+      const source = await db.query(
+        `SELECT github_repo_id FROM openpayables.github_sources
+         WHERE project_id=$1 AND github_repo_id=$2 AND lower(full_name)=lower($3)`,
+        [projectId, repo.id, repo.fullName],
+      );
+      if (source.rowCount !== 1) throw new Error("Register the exact GitHub repository before binding its App installation");
+      const inserted = await db.query(
+        `INSERT INTO openpayables.github_app_source_bindings
+         (project_id,github_repo_id,app_id,installation_id,bound_by)
+         VALUES($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING RETURNING project_id`,
+        [projectId, repo.id, binding.appId, binding.installationId, actor],
+      );
+      const existing = await db.query(
+        `SELECT app_id,installation_id,bound_by,bound_at FROM openpayables.github_app_source_bindings
+         WHERE project_id=$1 AND github_repo_id=$2`, [projectId, repo.id],
+      );
+      if (existing.rowCount !== 1 || Number(existing.rows[0].app_id) !== binding.appId ||
+          Number(existing.rows[0].installation_id) !== binding.installationId) {
+        throw new Error("GitHub App installation already bound with different immutable terms");
+      }
+      return { projectId, githubRepoId: repo.id, fullName: repo.fullName,
+        appId: binding.appId, installationId: binding.installationId,
+        boundBy: String(existing.rows[0].bound_by), boundAt: existing.rows[0].bound_at as Date,
+        boundNow: inserted.rowCount === 1 };
+    });
+  }
+
+  /** Read metadata only. No App keys or installation tokens are stored. */
+  async appBinding(project: string, repoId: number) {
+    const projectId = required(project, "project ID");
+    if (!Number.isSafeInteger(repoId) || repoId <= 0) throw new Error("Invalid repository ID");
+    const rows = await this.pool.query(
+      `SELECT b.app_id,b.installation_id,b.bound_by,b.bound_at,s.full_name
+       FROM openpayables.github_app_source_bindings b
+       JOIN openpayables.github_sources s ON s.project_id=b.project_id AND s.github_repo_id=b.github_repo_id
+       WHERE b.project_id=$1 AND b.github_repo_id=$2`, [projectId, repoId],
+    );
+    if (rows.rowCount === 0) return null;
+    if (rows.rowCount !== 1) throw new Error("Conflicting GitHub App bindings");
+    return { projectId, githubRepoId: repoId, fullName: String(rows.rows[0].full_name),
+      appId: Number(rows.rows[0].app_id), installationId: Number(rows.rows[0].installation_id),
+      boundBy: String(rows.rows[0].bound_by), boundAt: rows.rows[0].bound_at as Date };
+  }
+
   async importCandidates(project: string, repo: GitHubRepository, items: readonly GitHubCandidate[]) {
     const projectId = required(project, "project ID");
     if (!Number.isSafeInteger(repo.id) || repo.id <= 0) throw new Error("Invalid GitHub repository identity");
