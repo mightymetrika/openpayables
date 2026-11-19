@@ -9,8 +9,11 @@ import { GitHubPublicClient, parseMaxPages, parsePublicRepository, parseSince } 
 import { OpenPayablesGitHub } from "../storage/postgres/github.js";
 import { GitHubAppClient } from "../github/app.js";
 import { GitHubDeviceFlowClient } from "../github/device-flow.js";
+import { OpenPayablesOperatorSetup } from "../operator/setup.js";
 
-const HELP = `OpenPayables Checkpoint C10 — one operator-owned Stripe TEST platform per project
+const HELP = `OpenPayables Checkpoint C11 — one operator-owned Stripe TEST platform per project
+  project setup <project-id> <project-name> <owner/repo>   (GitHub App verified; atomic local setup)
+  project setup-status <project-id>                     (read-only local readiness)
   github source add <project-id> <owner/repo>          (public, read-only; verifies repository)
   github source list <project-id>
   github app bind <project-id> <owner/repo>         (verify App installation and bind exact repository)
@@ -77,10 +80,26 @@ async function main() {
   const store = new OpenPayablesStore(pool);
   const finance = new OpenPayablesFinance(pool);
   const github = new OpenPayablesGitHub(pool);
+  const setup = new OpenPayablesOperatorSetup(pool);
   try {
     let result: unknown;
     const key = `${group} ${command}`;
     switch (key) {
+      case "project setup": {
+        required(args, 3);
+        const actor = operator();
+        const publicGitHub = new GitHubPublicClient();
+        const app = GitHubAppClient.fromEnv();
+        result = await setup.setup(args[0]!, args[1]!, args[2]!, actor, {
+          repository: (fullName) => publicGitHub.repository(fullName),
+          authorizeRepository: (repo) => app.authorizeRepository(repo),
+        });
+        break;
+      }
+      case "project setup-status":
+        required(args, 1);
+        result = await setup.status(args[0]!);
+        break;
       case "github source":
         if (args[0] === "add") {
           required(args, 3); operator();

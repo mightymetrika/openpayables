@@ -1,12 +1,30 @@
 # OpenPayables — Project Handoff
 
 **Date:** 2026-11-19 (US Pacific)
-**Current version:** Checkpoints A–C9 committed. **C10 contributor-controlled GitHub identity verification accepted in Windows tests and real GitHub `whoami`; awaiting C10 source checkpoint commit.**
-**Git baseline:** `28a79a4` on `main` (Checkpoint B); `e8afaf3` on `development` (C9 real GitHub acceptance docs committed and pushed).
+**Current version:** C11 atomic local operator setup **accepted on Windows and against the real GitHub App; pending C11 commit/push**. C10 accepted and committed as `b481ed4`.
+**Git baseline:** `28a79a4` on `main` (Checkpoint B); `b481ed4` on `development` (C10 accepted).
 **Remote:** https://github.com/mightymetrika/openpayables
-**Working branch:** `development` at C9 `e8afaf3` with 14 C10 implementation files staged and passing validation; acceptance documentation update and C10 commit/push still pending. Do not change blindstats.
+**Working branch:** `development`; C11 changes are staged against clean C10 baseline `b481ed4`, not yet committed. Do not change BlindStats or RandomPlayables.
 
-## Checkpoint C10 — contributor-controlled GitHub identity verification (WINDOWS + REAL DEVICE AUTH ACCEPTED; PENDING COMMIT)
+## Checkpoint C11 — simpler project operator onboarding (WINDOWS + REAL GITHUB ACCEPTED; PENDING COMMIT)
+
+- New CLI commands `project setup PROJECT_ID NAME owner/repo` and `project setup-status PROJECT_ID` connect existing C7–C10 functions in a practical local operator workflow.
+- **Before DB writes**, verify that the requested public repository exists and that the configured GitHub App has the correct scoped installation and pull-request read access. No public fallback after binding.
+- **One PostgreSQL transaction** creates the project, four default contribution categories, immutable GitHub source registration and immutable per-project App installation binding; a failure rolls all steps back. Identical repeated setup is idempotent, but conflicts or attempts to adopt a different/partial project fail closed.
+- Read-only status displays project GitHub-source/binding metadata and counts for project contributors, candidates, candidate approvals, linked identities and verified identities; it reports **local persisted configuration only**, not currently verified GitHub access or financial readiness.
+- New `src/operator/setup.ts`, unit + PostgreSQL integration tests, and `docs/OPERATOR_SETUP_v0.1.md`. No SQL migration or changes to credits, votes, Stripe transfers, LIVE payments or other project databases.
+### C11 acceptance evidence — 2026-11-19 (US Pacific)
+
+- **Windows validation:** `npm run db:migrate` succeeded on the dedicated OpenPayables development database; `npm run check` passed **84/84 unit tests**, ESLint, and TypeScript build; `npm run test:integration` passed **33/33 PostgreSQL integration tests** in the separate `openpayables_test` database. Total: **117 passing tests** across the two suites.
+- **Git validation:** `git diff --check` and `git diff --cached --check` succeeded, and the **eight intended C11 files** were staged. LF-to-CRLF messages were informational.
+- **Real new-project setup:** `project setup openpayables-c11-0ecc34cd "C11 operator setup acceptance" mightymetrika/openpayables` created an isolated local project (`createdNow: true`) with **GitHub repository ID `1460710596`**, App ID `5825297`, and installation ID `183507524`.
+- **Idempotency:** Repeating the identical setup returned `createdNow: false` with the same IDs. `project setup-status` confirmed the registered repository/installation and reported **zero contributors, candidates, approvals, linked identities and verified identities**.
+- **Real GitHub synchronization:** `github sync` for the new project, since `2026-11-01`, returned `authMode: github_app_installation`, expected installation ID, and **zero discovered/new candidates, zero awarded credits, and zero created payment obligations**. This validates authenticated empty-case discovery, not a positive real-world PR import.
+- **Boundaries:** No dummy PR, simulated funding entry, Stripe API call, transfer, bank payout or LIVE payment was needed for C11 acceptance. Existing C7/C9 projects were left alone. The CLI remains a trusted local operator workflow, **not** a hosted multi-tenant onboarding service.
+
+**NEXT:** Apply this documentation-only acceptance update, then commit all eight staged C11 files and push **`development` only**. Keep `main` at `28a79a4`. The next useful slice should connect practical contributor enrollment and review/approval CLI steps without introducing live money movement or a speculative hosted frontend.
+
+## Checkpoint C10 — contributor-controlled GitHub identity verification (WINDOWS + REAL DEVICE AUTH ACCEPTED; COMMITTED `b481ed4`)
 
 - GitHub App **Device Flow** generates a short-lived user access token used once to query authenticated `GET /user`. The user enters the short code at GitHub; no user OAuth token or refresh token is stored. The App ID and public Client ID are distinct. A signed `GET /app` verifies their correspondence before any device authorization.
 - `github identity whoami` performs a no-database-write device-flow smoke check, useful because the actual C7 project has no merged PR candidates.
@@ -23,7 +41,7 @@
 - **Scope of evidence:** The real `whoami` flow confirms GitHub account control, **not** a persisted project contributor verification; `whoami` makes no identity-record write. The exact C8-link-to-C10-verification positive path and adverse cases passed in the PostgreSQL integration suite using test data. The public C7 scan has no qualifying merged PRs and no real project-linked verification was performed. No test PR was created just to satisfy acceptance.
 - **No financial side effects:** No credits, monetary obligations, Stripe funds, transfers or bank payouts were created or modified during the real `whoami` test. Stripe live approval remains pending; live payment keys are still disabled.
 
-**NEXT:** Apply this documentation-only C10 acceptance patch, re-stage the updated three files, confirm all 14 intended files and whitespace validation, commit and push C10 on `development` only. Keep `main` at `28a79a4`. Then prioritize the next practical GitHub onboarding/operability MVP slice, avoiding unnecessary test-only PRs.
+**C10 Git checkpoint:** All 14 C10 files were committed as `b481ed4` (`feat: verify contributor GitHub identity through Device Flow`) and pushed to `origin/development`. Local/remote matched, working tree clean and `main` stayed `28a79a4`. The next active slice is C11 operator setup.
 
 ## Checkpoint A — validated
 
