@@ -12,7 +12,7 @@ import { GitHubDeviceFlowClient } from "../github/device-flow.js";
 import { OpenPayablesOperatorSetup } from "../operator/setup.js";
 import { OpenPayablesContributorReview } from "../operator/review.js";
 
-const HELP = `OpenPayables Checkpoint C12 — one operator-owned Stripe TEST platform per project
+const HELP = `OpenPayables technical preview — operator-owned Stripe TEST only
   project setup <project-id> <project-name> <owner/repo>   (GitHub App verified; atomic local setup)
   project setup-status <project-id>                     (read-only local readiness)
   github source add <project-id> <owner/repo>          (public, read-only; verifies repository)

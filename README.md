@@ -2,7 +2,29 @@
 
 A reusable TypeScript/PostgreSQL package for verified open-source contribution credits, contributor voting, and deterministic revenue-sharing **with actual monetary payment capability as the project goal**.
 
-**Status:** GitHub integration C7–C12 is locally validated on `development` at **`5a94518`** (C12 committed and pushed). C12 passed 88 unit tests, 38 PostgreSQL integration tests, ESLint, TypeScript build and a real-project empty-queue lookup on 2026-11-19. C9 installation authentication and C10 Device Flow were separately verified against GitHub. The first Stripe Connect TEST transfer was independently verified on 2026-11-17. No live payments are enabled; BlindStats and RandomPlayables remain unchanged.
+**Status (2026-11-19):** C13 accepted on `development` at `bfe29e4`: 92 unit tests and 40 PostgreSQL integration tests passed, including immutable operator-attested revenue-pool inputs and deterministic distribution approvals. GitHub v0.1 (C7–C12) remains accepted with real positive merged-PR acceptance pending; Stripe Connect TEST transfers were independently demonstrated earlier. This repository is now preparing a **self-hosted CLI technical preview**, not an authenticated hosted service or a LIVE payment product. `main` remains unchanged; no LIVE payments, BlindStats or RandomPlayables modifications.
+
+
+## Technical preview — install from an npm tarball (TEST only)
+
+`npm pack` builds an independently installable tarball containing the compiled CLI, PostgreSQL migrations, README and license. The existing software remains MIT-licensed and open-source; `private: true` intentionally blocks accidental npm registry publication. Node.js 24+ and a dedicated PostgreSQL 16+ database are required.
+
+```powershell
+# In a trusted source checkout:
+npm install
+npm run check
+npm pack
+# In a separate operator installation directory:
+npm init -y
+npm install --no-audit --no-fund "C:\path\to\openpayables-0.2.0-alpha.1.tgz"
+# Supply your own dedicated database URL in the session.
+$env:OPENPAYABLES_DATABASE_URL = 'postgresql://USER:PASSWORD@127.0.0.1:5432/DEDICATED_OPENPAYABLES_DATABASE'
+$env:OPENPAYABLES_OPERATOR_ID = 'trusted-operator'
+.\node_modules\.bin\openpayables-migrate.cmd
+.\node_modules\.bin\openpayables.cmd --help
+```
+
+See `docs/TECHNICAL_PREVIEW_RELEASE.md` for exact setup, safe smoke acceptance, project workflows, package contents and release boundaries. This remains a **trusted single-operator terminal**, not a service that strangers can log in to; each operator owns their own database and Stripe account. No LIVE Stripe credentials are supported.
 
 ## C11 operator quick start — Windows and real GitHub accepted; committed `239962f`
 

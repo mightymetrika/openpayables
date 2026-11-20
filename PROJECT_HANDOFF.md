@@ -1,5 +1,15 @@
 # OpenPayables — Project Handoff
 
+## Self-hosted technical preview packaging (WINDOWS ACCEPTED)
+
+**Source baseline:** `development` at `bfe29e4` (C13 accepted/pushed; `main` unchanged at `28a79a4`). This packaging increment adds `openpayables` and `openpayables-migrate` npm tarball binaries, allowlisted compiled JS/SQL packaging, documentation, and a PowerShell smoke test that installs into an independent temporary consumer directory using **only** the dedicated `openpayables_test` database. The smoke creates synthetic contribution, vote and TEST-funding records; it does not create GitHub PRs, contact Stripe, pay anyone, or enable LIVE keys.
+
+**Windows acceptance, 2026-11-19 (US Pacific):** `npm run check` passed **92/92 unit tests**, ESLint and TypeScript build; `npm run test:integration` passed **40/40 PostgreSQL tests** (132/132 combined). The independent installed-tarball smoke test passed: the compiled CLI and migrator ran outside the source checkout, applied migrations to the test database, verified an 8:3 voting flow, and checked a 2,000-cent operator-attested revenue-pool allocation of **1,455/545 cents**. `git diff --check` passed; LF-to-CRLF warnings were informational. No external GitHub, Stripe, bank-payout or LIVE operations occurred. The technical preview is **validated for local packaging**, not yet published as a GitHub prerelease or npm package.
+
+**Release boundary:** This packaging increment is accepted for commit on `development`; check Git history for its eventual commit ID. A separate deliberate GitHub prerelease can attach the versioned tarball with clear TEST-only limitations. Do not merge `main` or publish to npm by default. See `docs/TECHNICAL_PREVIEW_RELEASE.md`. The smoke is not an external real merged-PR end-to-end test or proof of LIVE payment eligibility.
+
+**Fixed release path:** (1) ship self-hosted TEST technical preview; (2) observe genuine operator usability friction and adopt minimal interfaces if warranted; (3) pursue separately approved Stripe LIVE pilot with operator-owned money and clear legal/tax obligations. No more accounting checkpoints without evidence of a correctness blocker.
+
 ## Checkpoint C13 — operator revenue-pool basis (WINDOWS VALIDATED)
 
 **Scope:** One immutable, operator-attested revenue-pool calculation feeding the existing draft/approval workflow. `distribution create-revenue` records gross receipts, fees, costs, reserves, the contributor share in basis points, a policy reference and a receipt-ledger reference. Integer-cent arithmetic uses floor rounding. `distribution show` exposes the basis. Existing prefunded `distribution create`, verified/attested TEST funding separation, approval locks, Stripe guards, and governance remain unchanged. No revenue import, real-money payments, web UI, or GitHub changes. See `docs/REVENUE_POOL_BASIS_v0.1.md`.

@@ -16,7 +16,8 @@
     "lint": "eslint .",
     "build": "tsc -p tsconfig.json",
     "check": "npm test && npm run lint && npm run build",
-    "webhook:dev": "tsx src/server/webhook.ts"
+    "webhook:dev": "tsx src/server/webhook.ts",
+    "prepack": "npm run build"
   },
   "dependencies": {
     "pg": "^8.13.1"
@@ -30,5 +31,15 @@
     "typescript": "^5.8.3",
     "typescript-eslint": "^8.31.0",
     "vitest": "^4.0.0"
-  }
+  },
+  "bin": {
+    "openpayables": "./dist/cli/index.js",
+    "openpayables-migrate": "./dist/storage/postgres/migrate.js"
+  },
+  "files": [
+    "dist/",
+    "sql/",
+    "README.md",
+    "LICENSE"
+  ]
 }
