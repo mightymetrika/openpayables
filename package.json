@@ -1,6 +1,6 @@
 {
   "name": "openpayables",
-  "version": "0.2.0-alpha.1",
+  "version": "0.2.0-alpha.2",
   "private": true,
   "description": "Project-scoped contribution credits, governance and deterministic revenue-sharing infrastructure",
   "type": "module",
@@ -12,7 +12,7 @@
     "cli": "tsx src/cli/index.ts",
     "db:migrate": "tsx src/storage/postgres/migrate.ts",
     "test": "vitest run",
-    "test:integration": "vitest run tests/postgres.integration.test.ts tests/finance.integration.test.ts tests/github.integration.test.ts tests/github-approval.integration.test.ts tests/github-app.integration.test.ts tests/github-identity-verification.integration.test.ts tests/operator-setup.integration.test.ts tests/operator-review.integration.test.ts tests/pool.integration.test.ts",
+    "test:integration": "vitest run tests/postgres.integration.test.ts tests/finance.integration.test.ts tests/github.integration.test.ts tests/github-approval.integration.test.ts tests/github-app.integration.test.ts tests/github-identity-verification.integration.test.ts tests/operator-setup.integration.test.ts tests/operator-review.integration.test.ts tests/pool.integration.test.ts tests/application-read.integration.test.ts",
     "lint": "eslint .",
     "build": "tsc -p tsconfig.json",
     "check": "npm test && npm run lint && npm run build",
@@ -31,6 +31,12 @@
     "typescript": "^5.8.3",
     "typescript-eslint": "^8.31.0",
     "vitest": "^4.0.0"
+  },
+  "exports": {
+    "./read": {
+      "types": "./dist/integration/read.d.ts",
+      "default": "./dist/integration/read.js"
+    }
   },
   "bin": {
     "openpayables": "./dist/cli/index.js",

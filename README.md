@@ -2,7 +2,7 @@
 
 A reusable TypeScript/PostgreSQL package for verified open-source contribution credits, contributor voting, and deterministic revenue-sharing **with actual monetary payment capability as the project goal**.
 
-**Status (2026-11-19):** C13 accepted on `development` at `bfe29e4`: 92 unit tests and 40 PostgreSQL integration tests passed, including immutable operator-attested revenue-pool inputs and deterministic distribution approvals. GitHub v0.1 (C7–C12) remains accepted with real positive merged-PR acceptance pending; Stripe Connect TEST transfers were independently demonstrated earlier. This repository is now preparing a **self-hosted CLI technical preview**, not an authenticated hosted service or a LIVE payment product. `main` remains unchanged; no LIVE payments, BlindStats or RandomPlayables modifications.
+**Status (2026-11-20):** `v0.2.0-alpha.1` is a published, self-hosted **TEST-only technical preview**, built from accepted `development` commit `95da1eb` (92 unit and 40 PostgreSQL tests, independently installed package smoke passed). GitHub contribution review and Stripe Connect TEST have validated foundations; a real merged-PR end-to-end acceptance is still outstanding. The next unreleased development slice is a **read-only host-application integration**, targeting `0.2.0-alpha.2`. The service does not provide authentication, a hosted web UI, or LIVE payment capability. `main`, BlindStats and RandomPlayables remain untouched.
 
 
 ## Technical preview — install from an npm tarball (TEST only)
@@ -16,7 +16,7 @@ npm run check
 npm pack
 # In a separate operator installation directory:
 npm init -y
-npm install --no-audit --no-fund "C:\path\to\openpayables-0.2.0-alpha.1.tgz"
+npm install --no-audit --no-fund "C:\path\to\openpayables-0.2.0-alpha.2.tgz"
 # Supply your own dedicated database URL in the session.
 $env:OPENPAYABLES_DATABASE_URL = 'postgresql://USER:PASSWORD@127.0.0.1:5432/DEDICATED_OPENPAYABLES_DATABASE'
 $env:OPENPAYABLES_OPERATOR_ID = 'trusted-operator'
@@ -25,6 +25,13 @@ $env:OPENPAYABLES_OPERATOR_ID = 'trusted-operator'
 ```
 
 See `docs/TECHNICAL_PREVIEW_RELEASE.md` for exact setup, safe smoke acceptance, project workflows, package contents and release boundaries. This remains a **trusted single-operator terminal**, not a service that strangers can log in to; each operator owns their own database and Stripe account. No LIVE Stripe credentials are supported.
+
+
+## Host application read interface — development only (`0.2.0-alpha.2`)
+
+A trusted server application can import `OpenPayablesReadOnly` from `openpayables/read` after installing an **accepted next-version** tarball. The interface provides a project manager overview, a paged pending GitHub-evidence queue, and a contributor-specific credit/vote/TEST-distribution view. These calls run parameterized PostgreSQL **SELECT** queries and perform no transfers or writes.
+
+**Critical:** The host application must authenticate its user, explicitly authorize access to the correct OpenPayables project, and resolve the authenticated person's contributor identity **server-side** before calling the reader. A BlindStats Study capability or email address is **not** automatically an OpenPayables payment role or contributor identity. Keep the OpenPayables database connection string server-only and separate from the BlindStats Supabase database. See `docs/BLINDSTATS_INTEGRATION_PILOT_v0.1.md`.
 
 ## C11 operator quick start — Windows and real GitHub accepted; committed `239962f`
 

@@ -26,7 +26,7 @@ try {
     if ($packages.Count -ne 1) { throw 'Expected exactly one npm package.' }
     $package = $packages[0]
     $paths = @($package.files | ForEach-Object { [string]$_.path })
-    foreach ($needed in @('dist/cli/index.js', 'dist/storage/postgres/migrate.js', 'sql/011_checkpoint_c13.sql', 'sql/001_checkpoint_a.sql', 'package.json', 'README.md', 'LICENSE')) {
+    foreach ($needed in @('dist/cli/index.js', 'dist/storage/postgres/migrate.js', 'dist/integration/read.js', 'sql/011_checkpoint_c13.sql', 'sql/001_checkpoint_a.sql', 'package.json', 'README.md', 'LICENSE')) {
         if ($paths -notcontains $needed) { throw "Missing package file: $needed" }
     }
     foreach ($path in $paths) {
@@ -101,8 +101,40 @@ try {
     if (@($shown.obligations | Where-Object { $_.status -ne 'held' }).Count -ne 0) {
         throw 'Obligations must remain held without connected recipients.'
     }
+    # The independent app integration import must work from the installed tarball,
+    # not from TypeScript sources or the development checkout.
+    $readScript = Join-Path $consumer 'read-pilot.mjs'
+    $readCode = @'
+import { OpenPayablesReadOnly } from "openpayables/read";
+const [project, alice, bob] = process.argv.slice(2);
+const reader = new OpenPayablesReadOnly(process.env.OPENPAYABLES_DATABASE_URL);
+try {
+  const summary = await reader.projectOverview(project);
+  if (summary.totalPoints !== 11 || summary.contributorCount !== 2 || summary.pendingEvidenceCount !== 0) {
+    throw new Error("Incorrect manager summary");
+  }
+  const aliceView = await reader.contributorView(project, alice);
+  const bobView = await reader.contributorView(project, bob);
+  if (aliceView.points !== 8 || bobView.points !== 3 ||
+      aliceView.voting[0]?.choice !== "yes" || bobView.voting[0]?.choice !== "no" ||
+      aliceView.testDistributions[0]?.amountCents !== 1455 ||
+      bobView.testDistributions[0]?.amountCents !== 545 ||
+      aliceView.testDistributions[0]?.status !== "held") {
+    throw new Error("Incorrect contributor read model");
+  }
+  try { await reader.contributorView(project, "not-a-member"); throw new Error("Missing scope rejection"); }
+  catch (error) { if (!String(error.message).includes("Contributor not found")) throw error; }
+} finally {
+  await reader.close();
+}
+console.log("Installed read-only app integration PASS");
+'@
+    [System.IO.File]::WriteAllText($readScript, $readCode, ([System.Text.UTF8Encoding]::new($false)))
+    & node $readScript $project $alice $bob
+    if ($LASTEXITCODE -ne 0) { throw 'Installed read-only application integration failed.' }
+
     Write-Host "Technical preview package smoke PASS (project=$project)."
-    Write-Host 'Installed binaries and migrations PASS; 8:3 votes PASS; 2000-cent revenue basis and 1455/545 allocation PASS.'
+    Write-Host 'Installed binaries, application-read API, and migrations PASS; 8:3 votes PASS; 2000-cent revenue basis and 1455/545 allocation PASS.'
     Write-Host 'No external GitHub, Stripe, bank payout or LIVE payment operations were performed.'
 }
 finally {
