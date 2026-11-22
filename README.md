@@ -2,8 +2,14 @@
 
 A reusable TypeScript/PostgreSQL package for verified open-source contribution credits, contributor voting, and deterministic revenue-sharing **with actual monetary payment capability as the project goal**.
 
-**Status (2026-11-20):** `v0.2.0-alpha.1` is a published, self-hosted **TEST-only technical preview**, built from accepted `development` commit `95da1eb` (92 unit and 40 PostgreSQL tests, independently installed package smoke passed). GitHub contribution review and Stripe Connect TEST have validated foundations; a real merged-PR end-to-end acceptance is still outstanding. The next unreleased development slice is a **read-only host-application integration**, targeting `0.2.0-alpha.2`. The service does not provide authentication, a hosted web UI, or LIVE payment capability. `main`, BlindStats and RandomPlayables remain untouched.
+**Status (2026-11-22):** `v0.2.0-alpha.2` is the published, self-hosted **TEST-only technical preview** with the validated `openpayables/read` application interface, tagged at `6c8f864`. An additive `0.2.0-alpha.3` development candidate has now passed local verification (**139/139 tests**, ESLint, TypeScript build) and a dedicated Supabase PostgreSQL hosted acceptance (11 migrations, restricted operator and reader logins, TLS, session/transaction poolers, synthetic 8:3 credits and $8/$3 held TEST allocations). At the hosted acceptance checkpoint the `0.2.0-alpha.3` candidate was uncommitted and unpublished; Git history determines its subsequent development commit. The existing public release and `main` were unchanged. OpenPayables does not provide end-user authentication, a centrally hosted multi-operator service, or LIVE payment capability.
 
+
+## Optional Supabase PostgreSQL hosting (hosted TEST accepted)
+
+OpenPayables can be deployed to a **dedicated, operator-owned Supabase PostgreSQL project** without adopting Supabase Auth or copying OpenPayables schema into an adopting application. Keep the existing OpenPayables migrations and `openpayables/read` interface. A small backward-compatible connection-pool setting, `OPENPAYABLES_POOL_MAX` (integer 1–20, default 5), allows host applications to use one connection per warm serverless instance; PostgreSQL TLS configuration remains in standard database URLs.
+
+**Hosted deployment acceptance passed on 2026-11-22** against a separate Mightymetrika-owned development Supabase project. All 11 existing migrations were applied and verified unchanged. `openpayables_operator` authenticated through the session pooler; `openpayables_app_ro` authenticated through the transaction pooler with the intended least-privilege checks. A TEST-only smoke created synthetic project `supabase-smoke-4496fd4f`, verified Alice/Bob 8:3 credits and governance voting, and read $8/$3 held TEST allocations through the published reader API. No Stripe calls or BlindStats changes occurred. This is **development/TEST hosting acceptance**, not a production application security approval. The public `v0.2.0-alpha.2` release has not changed; `0.2.0-alpha.3` is subject to a separate Git source checkpoint and release/packaging verification. See `docs/SUPABASE_POSTGRES_DEPLOYMENT.md`. Each independent operator must own its own database and payment credentials.
 
 ## Technical preview — install from an npm tarball (TEST only)
 
@@ -27,9 +33,9 @@ $env:OPENPAYABLES_OPERATOR_ID = 'trusted-operator'
 See `docs/TECHNICAL_PREVIEW_RELEASE.md` for exact setup, safe smoke acceptance, project workflows, package contents and release boundaries. This remains a **trusted single-operator terminal**, not a service that strangers can log in to; each operator owns their own database and Stripe account. No LIVE Stripe credentials are supported.
 
 
-## Host application read interface — development only (`0.2.0-alpha.2`)
+## Host application read interface — published (`v0.2.0-alpha.2`)
 
-A trusted server application can import `OpenPayablesReadOnly` from `openpayables/read` after installing an **accepted next-version** tarball. The interface provides a project manager overview, a paged pending GitHub-evidence queue, and a contributor-specific credit/vote/TEST-distribution view. These calls run parameterized PostgreSQL **SELECT** queries and perform no transfers or writes.
+A trusted server application can import `OpenPayablesReadOnly` from `openpayables/read` after installing the **published `v0.2.0-alpha.2`** tarball (or a separately verified future release). The interface provides a project manager overview, a paged pending GitHub-evidence queue, and a contributor-specific credit/vote/TEST-distribution view. These calls run parameterized PostgreSQL **SELECT** queries and perform no transfers or writes.
 
 **Critical:** The host application must authenticate its user, explicitly authorize access to the correct OpenPayables project, and resolve the authenticated person's contributor identity **server-side** before calling the reader. A BlindStats Study capability or email address is **not** automatically an OpenPayables payment role or contributor identity. Keep the OpenPayables database connection string server-only and separate from the BlindStats Supabase database. See `docs/BLINDSTATS_INTEGRATION_PILOT_v0.1.md`.
 

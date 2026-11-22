@@ -10,6 +10,13 @@ const url = process.env.OPENPAYABLES_TEST_DATABASE_URL;
 const suite = url ? describe : describe.skip;
 
 suite("read-only host application integration (dedicated TEST database)", () => {
+  // Vitest evaluates a skipped suite callback while collecting tests. Do not
+  // construct the reader when no dedicated PostgreSQL TEST URL is configured.
+  if (!url) {
+    it.skip("requires OPENPAYABLES_TEST_DATABASE_URL", () => {});
+    return;
+  }
+
   const pool = new Pool({ connectionString: url });
   const store = new OpenPayablesStore(pool);
   const finance = new OpenPayablesFinance(pool);
