@@ -80,7 +80,8 @@ class StripePilotTransfer implements PilotTransferProvider {
     const reader = this.live ? new StripeLiveReadiness(this.key, this.expectedPlatform, "YES_READ_ONLY") :
       new StripeSandboxReadiness(this.key, this.expectedPlatform!, "YES_SANDBOX_ONLY");
     const evidence = await reader.inspectPilot(i.recipientAccountId, i.topupId);
-    const raw = await this.request(`/v2/core/accounts/${i.recipientAccountId}?include%5B%5D=configuration.recipient`);
+    // Accounts v2 requires indexed array parameters (unlike v1 bracket arrays).
+    const raw = await this.request(`/v2/core/accounts/${i.recipientAccountId}?include%5B0%5D=configuration.recipient`);
     const capability = object(object(object(object(object(raw.configuration).recipient).capabilities).stripe_balance).stripe_transfers);
     if (raw.id !== i.recipientAccountId || raw.object !== "v2.core.account" || capability.status !== "active") {
       throw new Error(`${this.live ? "LIVE" : "TEST"} recipient v2 transfers capability not verified`);

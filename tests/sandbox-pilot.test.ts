@@ -38,7 +38,10 @@ describe("Sandbox pilot provider isolation (mocked HTTP)",()=>{
   it("uses the same one-shot transfer path and checks mode before and after POST",async()=>{
     const p=new StripeSandboxPilotTransfer(testKey,i.platformAccountId,true);
     const f=mock(payer,balance,recipient,topup,tx,v2,transfer);
-    await p.preflight(i);expect(await p.sendOnce(i)).toEqual({transferId:"tr_demo",amountReversedCents:0});
+    await p.preflight(i);
+    expect(f.mock.calls[5]![0]).toBe(`https://api.stripe.com/v2/core/accounts/${i.recipientAccountId}?include%5B0%5D=configuration.recipient`);
+    expect(f.mock.calls.slice(0,6).every(c=>c[1].method==="GET")).toBe(true);
+    expect(await p.sendOnce(i)).toEqual({transferId:"tr_demo",amountReversedCents:0});
     expect(f.mock.calls.filter(c=>c[1].method==="POST")).toHaveLength(1);
     expect(f.mock.calls[6]![1].headers["Idempotency-Key"]).toBe(pilotIdempotencyKey(i.approvalId));
     await expect(p.sendOnce(i)).rejects.toThrow(/fresh preflight/);

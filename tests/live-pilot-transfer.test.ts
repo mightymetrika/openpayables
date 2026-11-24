@@ -62,6 +62,7 @@ describe("LIVE pilot transfer client (mocked HTTP only)", () => {
       if(status==="active") await expect(client(true).preflight(i)).resolves.toMatchObject({receiptNetCents:900});
       else await expect(client(true).preflight(i)).rejects.toThrow(/v2 transfers/);
       expect(f).toHaveBeenCalledTimes(6); expect(f.mock.calls.every(call=>call[1].method==="GET")).toBe(true);
+      expect(f.mock.calls[5]![0]).toBe(`https://api.stripe.com/v2/core/accounts/${i.recipientAccountId}?include%5B0%5D=configuration.recipient`);
     }
   });
   it("reconciles only by exact payer, transfer ID, and frozen metadata; reports reversals", async () => {

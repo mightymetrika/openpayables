@@ -1,4 +1,14 @@
-# 2026-11-24 — Operational sandbox pilot runner (WINDOWS ACCEPTANCE PENDING)
+# 2026-11-24 — Accounts v2 query compatibility (WINDOWS ACCEPTANCE PENDING)
+
+**Accepted baseline:** `8f07d36`, clean synchronized `development`, 181/181 tests in 27 files, lint/build and 12-file staged scope passed. Sandbox runner installed; Stripe CLI 1.55.14 installed; local TEST webhook server and authenticated forwarding started, signing secrets matched. CLI reports API version 2026-10-28.endive; actual event compatibility still pending. Immutable 500-cent `pilot_test` approval `f51fe796-ab32-46bf-8ffa-bbe286aeaeec` prepared in loopback `openpayables_test` with existing sandbox funding receipt. No actual signed transfer event yet.
+
+**Operational blocker:** Execution stopped on recipient Accounts v2 GET with HTTP 400. Read-only diagnostic independently reproduced Stripe `invalid_fields`: unindexed query arrays (`include[]`) are unsupported; exact indexes required. Subsequent ledger status confirmed `approved_not_attempted`, attempt and observation null, no payout trace. Source confirms recipient preflight precedes durable attempt INSERT and transfer POST. No transfer was attempted by this runner.
+
+**Candidate:** Fix shared TEST/LIVE transfer provider to send `include%5B0%5D=configuration.recipient`; assert exact URL and read-only preflight behavior in both existing test suites. No new tests, migrations, eligibility changes or execution unlock. Expected 181 tests in 27 files. Corrected actual GET still requires verification. Preserve frozen approval and do not reset ledger or use LIVE credentials. After corrected sandbox GET, full Windows acceptance and commit, verify same approval remains unattempted and signed listener is active; execute once only, then reconcile actual transfer and automatic payout. Published alpha.3, hosted DB and BlindStats unchanged.
+
+---
+
+# 2026-11-24 — Operational sandbox pilot runner (WINDOWS ACCEPTED; COMMITTED 8f07d36)
 
 **Accepted baseline:** `5579736` on clean synchronized `development`, 176/176 tests in 26 files; lint/build and exact staged scope passed. Actual Stripe sandbox automatic $8 transfer-to-payout membership verified; combined `payout` + `source` API filter incompatibility corrected. Published alpha.3 and BlindStats unchanged.
 
