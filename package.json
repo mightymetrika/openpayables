@@ -12,13 +12,14 @@
     "cli": "tsx src/cli/index.ts",
     "db:migrate": "tsx src/storage/postgres/migrate.ts",
     "test": "vitest run",
-    "test:integration": "vitest run tests/postgres.integration.test.ts tests/finance.integration.test.ts tests/github.integration.test.ts tests/github-approval.integration.test.ts tests/github-app.integration.test.ts tests/github-identity-verification.integration.test.ts tests/operator-setup.integration.test.ts tests/operator-review.integration.test.ts tests/pool.integration.test.ts tests/application-read.integration.test.ts",
+    "test:integration": "vitest run tests/postgres.integration.test.ts tests/finance.integration.test.ts tests/github.integration.test.ts tests/github-approval.integration.test.ts tests/github-app.integration.test.ts tests/github-identity-verification.integration.test.ts tests/operator-setup.integration.test.ts tests/operator-review.integration.test.ts tests/pool.integration.test.ts tests/application-read.integration.test.ts tests/live-pilot.integration.test.ts",
     "lint": "eslint .",
     "build": "tsc -p tsconfig.json",
     "check": "npm test && npm run lint && npm run build",
     "webhook:dev": "tsx src/server/webhook.ts",
     "prepack": "npm run build",
-    "live:readiness": "tsx src/cli/live-readiness.ts"
+    "live:readiness": "tsx src/cli/live-readiness.ts",
+    "live:pilot": "tsx src/cli/live-pilot.ts"
   },
   "dependencies": {
     "pg": "^8.13.1"

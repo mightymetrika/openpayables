@@ -31,6 +31,10 @@ export interface LiveReadinessSummary {
   note: string;
 }
 
+export interface LivePilotEvidence extends LiveReadinessSummary {
+  receiptNetCents: number;
+}
+
 /** An intentionally limited subset of the Stripe REST API with GET-only access. */
 export class StripeLiveReadiness {
   constructor(
@@ -143,4 +147,23 @@ export class StripeLiveReadiness {
       note: "READ ONLY. No project allocation, recipient consent, tax review, balance reservation, or LIVE transfer is authorized by this result.",
     };
   }
+
+  /** Additional receipt evidence for a frozen pilot approval; not a transfer preflight. */
+  async inspectPilot(recipientId: string, topupId: string): Promise<LivePilotEvidence> {
+    const summary = await this.inspect(recipientId, topupId);
+    const receipt = summary.topup;
+    if (!receipt || !summary.recipient?.transfersAndPayoutsAppearEnabled) {
+      throw new Error("Pilot requires a succeeded receipt and eligible recipient");
+    }
+    const entry = await this.get(`/balance_transactions/${receipt.balanceTransactionId}`);
+    if (entry.object !== "balance_transaction" || entry.id !== receipt.balanceTransactionId ||
+        entry.source !== receipt.id || entry.type !== "topup" || entry.currency !== "usd" ||
+        entry.status !== "available" || entry.amount !== receipt.amountCents ||
+        !Number.isSafeInteger(entry.net) || (entry.net as number) <= 0 ||
+        (entry.net as number) > receipt.amountCents) {
+      throw new Error("Top-up balance transaction is not matching, available USD funding evidence");
+    }
+    return { ...summary, receiptNetCents: entry.net as number };
+  }
+
 }

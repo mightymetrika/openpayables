@@ -152,3 +152,27 @@ describe("independent LIVE-readiness command arguments", () => {
       .toThrow(/Duplicate/);
   });
 });
+
+describe("Pilot funding evidence", () => {
+  const recipientId = "acct_payee123";
+  const topupId = "tu_real123";
+  const recipient = { id: recipientId, object:"account", country:"US", payouts_enabled:true, details_submitted:true, capabilities:{transfers:"active"} };
+  const topup = { id:topupId, object:"topup", livemode:true, status:"succeeded", currency:"usd", amount:1000, balance_transaction:"txn_receipt123" };
+  const transaction = { id:"txn_receipt123", object:"balance_transaction", source:topupId, type:"topup", currency:"usd", status:"available", amount:1000, net:975 };
+  it("reads the matching available net balance transaction using GET only", async () => {
+    const mock = vi.fn();
+    for (const item of [platform, balance, recipient, topup, transaction]) mock.mockResolvedValueOnce(json(item));
+    vi.stubGlobal("fetch", mock);
+    expect(await client().inspectPilot(recipientId, topupId)).toMatchObject({receiptNetCents:975, safeToExecuteTransfer:false});
+    expect(mock.mock.calls.every(x=>x[1].method === "GET")).toBe(true);
+    expect(mock.mock.calls[4]?.[0]).toBe("https://api.stripe.com/v1/balance_transactions/txn_receipt123");
+  });
+  it("rejects pending, wrong-source and excessive-net balance transactions", async () => {
+    for (const item of [{...transaction,status:"pending"},{...transaction,source:"tu_wrong"},{...transaction,net:1001}]) {
+      const mock=vi.fn();
+      for (const entry of [platform,balance,recipient,topup,item]) mock.mockResolvedValueOnce(json(entry));
+      vi.stubGlobal("fetch",mock);
+      await expect(client().inspectPilot(recipientId,topupId)).rejects.toThrow(/not matching, available USD/);
+    }
+  });
+});

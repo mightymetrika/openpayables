@@ -1,10 +1,20 @@
-# 2026-11-23 — First-payout LIVE readiness candidate (UNVALIDATED; NEXT: WINDOWS ACCEPTANCE)
+# 2026-11-24 — First-payout isolated funding and approval candidate (WINDOWS ACCEPTANCE PENDING)
+
+**Accepted baseline:** `18ddcff` on `development`, synchronized with origin and clean at the 2026-11-23 close. `0.2.0-alpha.4` development version; published prerelease remains `v0.2.0-alpha.3`. User-verified `npm run check`: **151/151 tests in 22 files**, ESLint and TypeScript build passed, staged scope and Git whitespace checks passed. The nine-file readiness patch was committed and pushed. No LIVE Stripe request or money movement was performed. Mightymetrika's Connect onboarding and Payments balance funding option were established in the Dashboard; actual funding remains unverified.
+
+**Current candidate:** Add migration 012 and an isolated, append-only first-payout approval ledger with a separate CLI; use provider-read funding evidence, immutable receipt/recipient/amount/credit snapshot, authenticated dedicated DB login, one approval per payer and a conservative 2,500-cent cap. Exactly one positive-credit contributor is required; do not manufacture or suppress credits. Existing TEST tables and transfer code are unchanged. No LIVE DB provision, key creation, contributor account creation, top-up, transfer, or webhook work has been performed. See `docs/FIRST_PAYOUT_APPROVAL.md`.
+
+**Next:** Run Windows acceptance on `openpayables_test` only. Then implement the guarded LIVE transfer attempt and reconciliation path (including v2 recipient capability verification, fresh balance/receipt checks, signed webhook events and bank-payout tracing), and only then provision the separate real operator runtime and obtain explicit legal/tax/recipient/funding approval. No BlindStats changes or publishing. No actual payment until all gates are satisfied.
+
+---
+
+# 2026-11-23 — First-payout LIVE readiness checkpoint (WINDOWS ACCEPTED; COMMITTED 18ddcff)
 
 This checkpoint starts from the user-verified clean `development` commit `0e4b150` and published, **unchanged** `v0.2.0-alpha.3` GitHub prerelease. Mightymetrika LLC's LIVE Stripe account is active, Connect platform onboarding and identity verification have been completed, an email says it can create LIVE connected accounts and charges, and the Dashboard shows the Payments balance top-up option; **this is not proof that a real payout is authorized or funded**. We have not moved LIVE money or created a LIVE contributor. BlindStats has implemented the hosted READ-ONLY OpenPayables alpha.3 integration and is out of scope here.
 
-**Candidate scope:** Add `StripeLiveReadiness`, a strictly GET-only Stripe LIVE inspector; a separate `openpayables-live-readiness` CLI and `npm run live:readiness`; a short operator procedure; unit tests for wrong key/platform, LIVE response, recipient and top-up evidence, and GET-only behavior. The candidate version is `0.2.0-alpha.4` **not yet validated, committed, or published**. The TEST finance engine remains unchanged and rejects LIVE keys. No SQL migration, Stripe write endpoint, LIVE funding ledger, transfer, payment reconciliation, new connected account, or bank payout is introduced. This is a narrow prerequisite, **not** the First-Payout Pilot complete. See `docs/FIRST_PAYOUT_LIVE_READINESS.md`.
+**Candidate scope:** Add `StripeLiveReadiness`, a strictly GET-only Stripe LIVE inspector; a separate `openpayables-live-readiness` CLI and `npm run live:readiness`; a short operator procedure; unit tests for wrong key/platform, LIVE response, recipient and top-up evidence, and GET-only behavior. The candidate version is `0.2.0-alpha.4` **validated and committed; not published**. The TEST finance engine remains unchanged and rejects LIVE keys. No SQL migration, Stripe write endpoint, LIVE funding ledger, transfer, payment reconciliation, new connected account, or bank payout is introduced. This is a narrow prerequisite, **not** the First-Payout Pilot complete. See `docs/FIRST_PAYOUT_LIVE_READINESS.md`.
 
-**Next operator action:** On `development` at `0e4b150` with a clean working tree, apply the reviewed patch ZIP; run `npm run check` and `npm run test:integration` on the dedicated TEST database, then inspect scope. No LIVE API credentials are necessary for acceptance. Keep source changes uncommitted until the user has checked output. After that validation, implement the mode-separated funded LIVE ledger and authorized transfer/reconciliation path; no more generic infrastructure detours.
+**Historical acceptance:** Windows validated all 151 tests, ESLint, build and staged scope, then committed/pushed `18ddcff`. No further acceptance of this previous patch is required. See the newest checkpoint above for the next action.
 
 ---
 
