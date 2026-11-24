@@ -1,10 +1,20 @@
-# 2026-11-24 — First-payout signed webhook and payout trace candidate (WINDOWS ACCEPTANCE PENDING)
+# 2026-11-24 — Sandbox payout API compatibility correction (WINDOWS ACCEPTANCE PENDING)
+
+**Accepted baseline:** `68e67e1`, clean synchronized `development`; 175/175 tests in 26 files, lint/build and staged-scope checks passed. Version `0.2.0-alpha.4` remains unpublished; alpha.3 release unchanged.
+
+**Actual sandbox evidence:** The exact OpenPayables Development TEST payer and prior 800-cent unreversed transfer were verified. Its recipient had a standard automatic USD bank payout marked paid with completed reconciliation. Stripe rejected the combined `payout` + `source` filter with HTTP 400. A payout-only balance-transaction query returned the negative payout debit and exactly one 800-cent destination-payment transaction (zero fee, available), no additional pages. Exact membership was established by ID, not amount. This is genuine sandbox API evidence, not a real bank payment or full acceptance of the new provider/ledger path.
+
+**Candidate:** Correct `live-payout.ts` to query by payout only and filter exact source locally; test mixed transactions, same-amount unrelated sources, malformed matching rows, duplicate matches and incomplete pages. Retain strict LIVE credential/mode/account checks and the one-page fail-closed pilot limit. No schema change, no transfer execution unlock, no hosted migration or LIVE request. Expected 176 tests in 26 files. Next: accept and commit this focused fix, then run remaining end-to-end sandbox execution and signed webhook acceptance. Do not repeat the already verified manual GET inspection unnecessarily. Keep BlindStats out of scope.
+
+---
+
+# 2026-11-24 — First-payout signed webhook and payout trace (WINDOWS ACCEPTED; COMMITTED 68e67e1)
 
 **Accepted baseline:** `06e4672` on clean synchronized `development`, 167/167 tests in 25 files, lint/build and staged-scope/whitespace checks passed. Version `0.2.0-alpha.4`; published alpha.3 TEST-only preview and BlindStats remain unchanged. Mightymetrika Connect approval and Payments-balance funding option established; actual top-up, recipient and payment not demonstrated.
 
 **Candidate:** Migration 014 records immutable standard automatic bank-payout evidence, using the frozen payer/recipient, transfer destination payment and exact Stripe balance-transaction membership. Provider GET-only reads distinguish gross transfer, recipient net and aggregate payout total. Paid is provider-reported status, not independent proof of bank receipt. Failures and reversals are sticky; a second matched payout requires incident review. Separate signed LIVE platform/connected snapshot webhook endpoints route to authoritative GET-only reconciliation; bounded raw body, separate secrets, timestamp checks, exact account scope and idempotent append-only observations. Dedicated loopback listener; HTTPS ingress, permission configuration and actual webhook delivery are operational acceptance tasks. No LIVE CLI unlock, no hosted database migration, no Stripe requests or actual money movement. See `docs/FIRST_PAYOUT_PAYOUT_RECONCILIATION.md`.
 
-**Next:** Windows acceptance on dedicated local `openpayables_test` only (expected 175 tests / 26 files); then operational Stripe sandbox acceptance, including the actual source+payout API filter, connected-account read permissions, signed event delivery/retries, payout trace, and dedicated LIVE DB/login/HTTPS deployment. Confirm business/legal/tax approvals and recipient identity/consent; independently confirm bank receipt before closing the real pilot. Keep real transfer gate locked until the acceptance/release review. No extra dashboards or BlindStats changes.
+**Windows acceptance:** 175/175 tests in 26 files, lint/build, exact 19-file scope and whitespace checks passed. Committed and pushed `68e67e1` on `development`, synchronized and clean. No real payments. Operational sandbox inspection subsequently identified the combined-filter incompatibility; see latest entry. Remaining requirements include signed event delivery/retries, full sandbox execution, and dedicated LIVE DB/login/HTTPS deployment. Confirm business/legal/tax approvals and recipient identity/consent; independently confirm bank receipt before closing the real pilot. Keep real transfer gate locked until the acceptance/release review. No extra dashboards or BlindStats changes.
 
 ---
 

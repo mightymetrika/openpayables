@@ -59,12 +59,16 @@ export class StripeLivePayoutReader implements PilotPayoutProvider {
       if (["failed","canceled","reversed"].includes(status)) return { transfer, trace: { ...known, status } };
     }
     if (payout.reconciliation_status !== "completed") return { transfer, trace: null };
-    const q = new URLSearchParams({ payout: payoutId, source: payment, limit: "100" });
+    // Stripe sandbox acceptance: combining payout and source returns HTTP 400.
+    // Request payout membership alone; the response includes the payout debit
+    // and potentially unrelated payments. Match the exact source locally.
+    const q = new URLSearchParams({ payout: payoutId, limit: "100" });
     const list = await this.get(`/v1/balance_transactions?${q}`, i.recipientAccountId);
     if (list.object !== "list" || list.has_more !== false || !Array.isArray(list.data)) throw new Error("Incomplete payout membership evidence");
-    if (list.data.length === 0) return { transfer, trace: null };
-    if (list.data.length !== 1) throw new Error("Ambiguous destination payment membership");
-    const tx = asObject(list.data[0]);
+    const matches = list.data.map(asObject).filter(tx => tx.source === payment);
+    if (matches.length === 0) return { transfer, trace: null };
+    if (matches.length !== 1) throw new Error("Ambiguous destination payment membership");
+    const tx = matches[0]!;
     if (tx.object !== "balance_transaction" || tx.source !== payment || tx.currency !== "usd" || tx.status !== "available" || tx.amount !== i.amountCents ||
         !["payment","charge","inbound_transfer"].includes(String(tx.type)) || !Number.isSafeInteger(tx.fee) || (tx.fee as number) < 0 || tx.net !== i.amountCents - (tx.fee as number)) throw new Error("Destination payment transaction mismatch");
     const trace: PayoutTrace = { payoutId, transferId, destinationPaymentId: payment, balanceTransactionId: tx.id as string,

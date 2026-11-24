@@ -8,7 +8,9 @@ const transfer = { id:"tr_demo", object:"transfer", livemode:true, currency:"usd
   transfer_group:pilotIdempotencyKey(i.approvalId), metadata:{openpayables_approval_id:i.approvalId}, amount_reversed:0, reversed:false };
 const payout = { id:"po_demo", object:"payout", livemode:true, currency:"usd", automatic:true, method:"standard", type:"bank_account", reconciliation_status:"completed", amount:900, status:"paid", reversed_by:null };
 const tx = { id:"txn_demo", object:"balance_transaction", source:"py_demo", currency:"usd", status:"available", type:"payment", amount:500, fee:5, net:495 };
-const list = { object:"list", has_more:false, data:[tx] };
+const payoutDebit = { ...tx, id:"txn_debit", source:"po_demo", type:"payout", amount:-900, fee:0, net:-900 };
+const unrelated = { ...tx, id:"txn_other", source:"py_other" };
+const list = { object:"list", has_more:false, data:[payoutDebit, unrelated, tx] };
 function mock(p: unknown=payout, l: unknown=list, t: unknown=transfer, payer: unknown={id:i.platformAccountId}) {
   const f = vi.fn();
   for (const value of [payer,{object:"balance",livemode:true},t,p,l]) f.mockResolvedValueOnce(new Response(JSON.stringify(value),{status:200}));
@@ -34,18 +36,25 @@ describe("LIVE payout trace (mocked HTTP)",()=>{
     expect(f.mock.calls[3]![1].headers["Stripe-Account"]).toBe(i.recipientAccountId);
     const url=new URL(f.mock.calls[4]![0]);
     expect(url.searchParams.get("payout")).toBe("po_demo");
-    expect(url.searchParams.get("source")).toBe("py_demo");
+    expect(url.searchParams.has("source")).toBe(false);
+    expect(url.searchParams.get("limit")).toBe("100");
+    expect(f.mock.calls[4]![1].headers["Stripe-Account"]).toBe(i.recipientAccountId);
   });
   it("does not infer membership from equal amount, incomplete reconciliation, or manual payout",async()=>{
     mock(payout,{...list,data:[]}); expect((await reader().inspect(i,"tr_demo","po_demo")).trace).toBeNull();
+    mock(payout,{...list,data:[payoutDebit, unrelated]}); expect((await reader().inspect(i,"tr_demo","po_demo")).trace).toBeNull();
     const f=mock({...payout,automatic:false}); expect((await reader().inspect(i,"tr_demo","po_demo")).trace).toBeNull(); expect(f).toHaveBeenCalledTimes(4);
     mock({...payout,reconciliation_status:"in_progress"}); expect((await reader().inspect(i,"tr_demo","po_demo")).trace).toBeNull();
   });
   it("rejects wrong payer, TEST payout, mismatched membership and incomplete pagination",async()=>{
     mock(payout,list,transfer,{id:"acct_wrong"}); await expect(reader().inspect(i,"tr_demo","po_demo")).rejects.toThrow(/Wrong LIVE payer/);
     mock({...payout,livemode:false}); await expect(reader().inspect(i,"tr_demo","po_demo")).rejects.toThrow(/Wrong recipient/);
-    mock(payout,{...list,data:[{...tx,source:"py_wrong"}]}); await expect(reader().inspect(i,"tr_demo","po_demo")).rejects.toThrow(/transaction mismatch/);
+    mock(payout,{...list,data:[payoutDebit,{...tx,amount:499}]}); await expect(reader().inspect(i,"tr_demo","po_demo")).rejects.toThrow(/transaction mismatch/);
     mock(payout,{...list,has_more:true}); await expect(reader().inspect(i,"tr_demo","po_demo")).rejects.toThrow(/Incomplete/);
+  });
+  it("rejects duplicate exact matches rather than selecting one",async()=>{
+    mock(payout,{...list,data:[payoutDebit,tx,{...tx,id:"txn_duplicate"}]});
+    await expect(reader().inspect(i,"tr_demo","po_demo")).rejects.toThrow(/Ambiguous/);
   });
   it("preserves prior exact membership on failure or reversal even if membership is no longer available",async()=>{
     mock(); const known=(await reader().inspect(i,"tr_demo","po_demo")).trace!;
