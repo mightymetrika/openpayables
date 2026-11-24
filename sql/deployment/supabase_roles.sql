@@ -10,8 +10,8 @@ BEGIN
     RAISE EXCEPTION 'Expected a fresh dedicated Supabase database named postgres';
   END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = 'openpayables') OR
-     (SELECT count(*) FROM openpayables.schema_migrations) <> 12 THEN
-    RAISE EXCEPTION 'Run and verify the 12 OpenPayables migrations before provisioning roles';
+     (SELECT count(*) FROM openpayables.schema_migrations) <> 13 THEN
+    RAISE EXCEPTION 'Run and verify the 13 OpenPayables migrations before provisioning roles';
   END IF;
   IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname IN ('openpayables_operator','openpayables_app_ro')) THEN
     RAISE EXCEPTION 'OpenPayables role already exists; inspect it before re-provisioning';
@@ -31,7 +31,7 @@ GRANT USAGE ON SCHEMA openpayables TO openpayables_operator, openpayables_app_ro
 -- Operator uses the existing OpenPayables CLI and application business rules.
 -- No schema creation, DDL, TRIGGER privilege, DELETE, or migration-ledger writes.
 GRANT SELECT, INSERT, UPDATE ON ALL TABLES IN SCHEMA openpayables TO openpayables_operator;
-REVOKE ALL ON openpayables.schema_migrations, openpayables.live_pilot_approvals FROM openpayables_operator;
+REVOKE ALL ON openpayables.schema_migrations, openpayables.live_pilot_approvals, openpayables.live_pilot_attempts, openpayables.live_pilot_transfer_observations FROM openpayables_operator;
 
 -- Browser-facing application server: only the released read API's 15 relations.
 -- Column-level grants avoid access to unrelated payment and funding fields.

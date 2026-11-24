@@ -1,6 +1,6 @@
 # First-payout development status (2026-11-24)
 
-The accepted development baseline `18ddcff` passed 151 tests, lint and build. This next candidate adds an isolated first-payout funding and approval ledger, **not payment execution**. See `docs/FIRST_PAYOUT_APPROVAL.md`. The published alpha.3 TEST-only technical preview is unchanged.
+The accepted development baseline `fc646ef` passed 157 tests, lint and build. This candidate adds a durable one-shot transfer attempt and read-only transfer/reversal reconciliation on top of the isolated approval ledger. **The LIVE execution CLI is hard-disabled pending webhook, sandbox and bank-payout acceptance.** See `docs/FIRST_PAYOUT_TRANSFER.md`. The published alpha.3 TEST-only technical preview is unchanged.
 
 # OpenPayables
 

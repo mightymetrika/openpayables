@@ -57,6 +57,7 @@ export class StripeLiveReadiness {
     // Paths are constructed only from constants or validated Stripe IDs below.
     const res = await fetch(`${API}${path}`, {
       method: "GET",
+      redirect: "error",
       headers: { Authorization: `Bearer ${this.key}` },
       signal: AbortSignal.timeout(30000),
     });

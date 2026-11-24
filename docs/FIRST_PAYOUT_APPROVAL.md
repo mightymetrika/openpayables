@@ -1,4 +1,4 @@
-# First-payout approval — development candidate
+# First-payout approval — Windows accepted at `fc646ef`
 
 This is an isolated approval record, not a payable transfer or bank payout. The published TEST technical preview is unchanged. The normal TEST CLI, financial ledger and hosted development database cannot authorize LIVE payments. No money movement API is introduced.
 
@@ -23,4 +23,4 @@ Use the existing dedicated local `openpayables_test` URL, `npm run check` (inclu
 
 ## Remaining release gate
 
-Implement the single durable transfer attempt and unknown-outcome reconciliation with separate restricted write credentials, current v2 recipient capability check, fresh payer/balance/receipt validation, immutable amount and idempotency, authenticated webhook processing and bank-payout evidence. Test in a sandbox and dedicated DB; then provision and validate the real operator environment. Obtain explicit business/legal/tax/provider/recipient approvals and genuine funds before one separately authorized LIVE transfer. This candidate does not authorize or initiate one.
+The subsequent transfer candidate is described in `FIRST_PAYOUT_TRANSFER.md`. LIVE execution remains disabled pending authenticated webhook processing, bank-payout tracing, sandbox acceptance and real operator/environment approval. This approval record does not authorize a transfer.

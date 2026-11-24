@@ -1,10 +1,20 @@
-# 2026-11-24 — First-payout isolated funding and approval candidate (WINDOWS ACCEPTANCE PENDING)
+# 2026-11-24 — First-payout transfer and reconciliation candidate (WINDOWS ACCEPTANCE PENDING)
+
+**Accepted baseline:** `fc646ef` on `development`, clean and synchronized. Package development version `0.2.0-alpha.4`; published `v0.2.0-alpha.3` remains unchanged. 157/157 tests (23 files), ESLint, TypeScript build, exact staged scope and whitespace passed on Windows. Mightymetrika LIVE Connect onboarding and Payments-balance top-up option established; actual funding and real recipient not yet verified. No LIVE money movement.
+
+**Candidate:** Migration 013 adds a single immutable attempt per pilot approval, deterministic Stripe idempotency key, separately attested execution reference, and append-only transfer/reversal observations. The trusted internal execution path rechecks the frozen payer, recipient, USD amount, receipt and balance; requires current v2 recipient transfer capability and a fresh one-use preflight. It inserts and commits the attempt before the one POST. An ambiguous outcome, response mismatch or persistence failure never authorizes a resend. Read-only reconciliation requires exact transfer ID, payer, metadata, transfer group, amount/currency/destination and LIVE mode. Recorded reversals are not erased by stale observations. Provider-mode and DB guards separate synthetic TEST from LIVE. The CLI's LIVE execution release gate is hard-disabled; do not configure write keys or bypass the gate. See `docs/FIRST_PAYOUT_TRANSFER.md`.
+
+**Next:** Validate on dedicated local `openpayables_test` only. Then implement signed LIVE webhook processing and bank-payout tracing, exercise the actual Stripe API contract in a sandbox, and provision the dedicated LIVE operator environment only after release review. No hosted Supabase migration, release, `main`, BlindStats changes, or real transfer at this checkpoint. Actual transfer observation is not bank settlement. The $25 ceiling and one-attempt policy remain pilot restrictions, not general product architecture.
+
+---
+
+# 2026-11-24 — First-payout isolated funding and approval (WINDOWS ACCEPTED; COMMITTED fc646ef)
 
 **Accepted baseline:** `18ddcff` on `development`, synchronized with origin and clean at the 2026-11-23 close. `0.2.0-alpha.4` development version; published prerelease remains `v0.2.0-alpha.3`. User-verified `npm run check`: **151/151 tests in 22 files**, ESLint and TypeScript build passed, staged scope and Git whitespace checks passed. The nine-file readiness patch was committed and pushed. No LIVE Stripe request or money movement was performed. Mightymetrika's Connect onboarding and Payments balance funding option were established in the Dashboard; actual funding remains unverified.
 
 **Current candidate:** Add migration 012 and an isolated, append-only first-payout approval ledger with a separate CLI; use provider-read funding evidence, immutable receipt/recipient/amount/credit snapshot, authenticated dedicated DB login, one approval per payer and a conservative 2,500-cent cap. Exactly one positive-credit contributor is required; do not manufacture or suppress credits. Existing TEST tables and transfer code are unchanged. No LIVE DB provision, key creation, contributor account creation, top-up, transfer, or webhook work has been performed. See `docs/FIRST_PAYOUT_APPROVAL.md`.
 
-**Next:** Run Windows acceptance on `openpayables_test` only. Then implement the guarded LIVE transfer attempt and reconciliation path (including v2 recipient capability verification, fresh balance/receipt checks, signed webhook events and bank-payout tracing), and only then provision the separate real operator runtime and obtain explicit legal/tax/recipient/funding approval. No BlindStats changes or publishing. No actual payment until all gates are satisfied.
+**Windows acceptance:** User verified 157/157 tests in 23 files, ESLint, TypeScript build, exact 14-file staged scope and whitespace checks. Committed and pushed `fc646ef` on `development`; local HEAD equals origin/development and working tree clean. No LIVE money moved. This checkpoint is closed; see the newest entry for next steps.
 
 ---
 
