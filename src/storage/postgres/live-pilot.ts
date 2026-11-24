@@ -57,7 +57,7 @@ export class LivePilotLedger {
     const evidence = await provider.inspectPilot(input.recipientId, input.topupId);
     const { platformAccountId, recipient, topup, usdAvailableCents, receiptNetCents } = evidence;
     if (!/^acct_[A-Za-z0-9]+$/.test(platformAccountId) || platformAccountId === input.recipientId ||
-        evidence.country !== "US" || evidence.transfersCapability !== "active" ||
+        evidence.country !== "US" || (evidence.transfersCapability !== "active" && !(this.mode === "pilot_test" && evidence.transfersCapability === "sandbox_not_required")) ||
         recipient?.accountId !== input.recipientId || recipient.country !== "US" ||
         recipient.transfersAndPayoutsAppearEnabled !== true || recipient.transfersCapability !== "active" ||
         recipient.payoutsEnabled !== true || topup?.id !== input.topupId ||

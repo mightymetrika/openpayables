@@ -23,7 +23,7 @@ suite("One-shot pilot transfer (synthetic evidence only)", () => {
   const platformAccountId = `acct_platform${suffix}`;
   const input = { projectId, contributorId, recipientId, topupId, amountCents: 500, authorizationReference: "synthetic-approval" };
   const evidence: LivePilotEvidence = {
-    platformAccountId, country: "US", transfersCapability: "active", usdAvailableCents: 1000,
+    platformAccountId, country: "US", transfersCapability: "sandbox_not_required", usdAvailableCents: 1000,
     receiptNetCents: 900, safeToExecuteTransfer: false, note: "synthetic only",
     recipient: { accountId: recipientId, country: "US", transfersCapability: "active", payoutsEnabled: true, transfersAndPayoutsAppearEnabled: true },
     topup: { id: topupId, currency: "usd", amountCents: 1000, balanceTransactionId: `txn_${suffix}`, status: "succeeded" },

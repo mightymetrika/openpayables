@@ -1,10 +1,22 @@
-# 2026-11-24 — Sandbox payout API compatibility correction (WINDOWS ACCEPTANCE PENDING)
+# 2026-11-24 — Operational sandbox pilot runner (WINDOWS ACCEPTANCE PENDING)
+
+**Accepted baseline:** `5579736` on clean synchronized `development`, 176/176 tests in 26 files; lint/build and exact staged scope passed. Actual Stripe sandbox automatic $8 transfer-to-payout membership verified; combined `payout` + `source` API filter incompatibility corrected. Published alpha.3 and BlindStats unchanged.
+
+**Candidate:** Add explicit TEST-only provider entry points sharing the pilot HTTP evidence parsers and durable approval/attempt/payout ledgers; the known sandbox payer capability exception is accepted only in `pilot_test`. Sandbox runner requires local loopback `openpayables_test`, a TEST credential, explicit payer/recipient/receipt IDs, one synthetic contributor and fixed 500-cent approval. Separate exact UUID/confirmation required for one simulated transfer; read-only reconciliation only after an attempt. The loopback sandbox webhook listener uses the shared signature parser and reconciliation routing with a TEST-only mode check. LIVE key, account, eligibility and database requirements remain; LIVE execution CLI stays locked. No schema change or hosted deployment. Five new unit tests expected (181/181 in 27 files after Windows acceptance). See `docs/FIRST_PAYOUT_SANDBOX_ACCEPTANCE.md`.
+
+**Next:** validate patch; prepare the frozen sandbox approval with existing $5 succeeded receipt; verify Stripe CLI sandbox listener and signing secret; execute once and inspect actual signed delivery, transfer and subsequent automatic payout trace. Do not retry an uncertain transfer, manufacture evidence or weaken LIVE guards. No real money moved. No code work in BlindStats.
+
+---
+
+# 2026-11-24 — Sandbox payout API compatibility correction (WINDOWS ACCEPTED; COMMITTED 5579736)
 
 **Accepted baseline:** `68e67e1`, clean synchronized `development`; 175/175 tests in 26 files, lint/build and staged-scope checks passed. Version `0.2.0-alpha.4` remains unpublished; alpha.3 release unchanged.
 
 **Actual sandbox evidence:** The exact OpenPayables Development TEST payer and prior 800-cent unreversed transfer were verified. Its recipient had a standard automatic USD bank payout marked paid with completed reconciliation. Stripe rejected the combined `payout` + `source` filter with HTTP 400. A payout-only balance-transaction query returned the negative payout debit and exactly one 800-cent destination-payment transaction (zero fee, available), no additional pages. Exact membership was established by ID, not amount. This is genuine sandbox API evidence, not a real bank payment or full acceptance of the new provider/ledger path.
 
 **Candidate:** Correct `live-payout.ts` to query by payout only and filter exact source locally; test mixed transactions, same-amount unrelated sources, malformed matching rows, duplicate matches and incomplete pages. Retain strict LIVE credential/mode/account checks and the one-page fail-closed pilot limit. No schema change, no transfer execution unlock, no hosted migration or LIVE request. Expected 176 tests in 26 files. Next: accept and commit this focused fix, then run remaining end-to-end sandbox execution and signed webhook acceptance. Do not repeat the already verified manual GET inspection unnecessarily. Keep BlindStats out of scope.
+
+**Windows acceptance:** 176/176 tests in 26 files, lint/build, 4-file scope and whitespace checks passed. Committed/pushed `5579736`; clean synchronized development.
 
 ---
 

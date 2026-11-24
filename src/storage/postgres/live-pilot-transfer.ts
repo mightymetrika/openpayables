@@ -57,7 +57,7 @@ export class LivePilotTransferLedger {
     }
     if ((await this.status(i.approvalId)).attempt) throw new Error("Attempt already exists; reconcile only, never resend");
     const e = await provider.preflight(i);
-    if (e.platformAccountId !== i.platformAccountId || e.country !== "US" || e.transfersCapability !== "active" ||
+    if (e.platformAccountId !== i.platformAccountId || e.country !== "US" || (e.transfersCapability !== "active" && !(this.mode === "pilot_test" && e.transfersCapability === "sandbox_not_required")) ||
       e.recipient?.accountId !== i.recipientAccountId || e.recipient.country !== "US" || e.recipient.transfersCapability !== "active" ||
       !e.recipient.payoutsEnabled || !e.recipient.transfersAndPayoutsAppearEnabled || e.topup?.id !== i.topupId ||
       e.topup.currency !== "usd" || e.topup.status !== "succeeded" || e.topup.balanceTransactionId !== row.balance_transaction_id ||

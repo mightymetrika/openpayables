@@ -25,10 +25,11 @@ export function validateTrace(t: PayoutTrace, i: PilotTransferInstruction, trans
 }
 
 /** Only GET requests. Account context is set by the frozen approval, never by arbitrary webhook data. */
-export class StripeLivePayoutReader implements PilotPayoutProvider {
-  readonly mode = "live" as const;
-  constructor(private readonly key: string | undefined, private readonly payer: string | undefined) {
-    if (!key?.startsWith("rk_live_") || key.length <= 8 || !payer || !/^acct_[A-Za-z0-9]+$/.test(payer)) throw new Error("LIVE restricted read key and exact payer required");
+class StripePilotPayoutReader implements PilotPayoutProvider {
+  readonly mode: "live" | "pilot_test";
+  constructor(private readonly key: string | undefined, private readonly payer: string | undefined, private readonly live: boolean) {
+    this.mode = live ? "live" : "pilot_test";
+    if (!key || !(live ? /^rk_live_.+$/.test(key) : /^(sk|rk)_test_.+$/.test(key)) || !payer || !/^acct_[A-Za-z0-9]+$/.test(payer)) throw new Error(live ? "LIVE restricted read key and exact payer required" : "TEST key and exact payer required");
   }
   private async get(path: string, recipient?: string) {
     const res = await fetch(`https://api.stripe.com${path}`, { method: "GET", redirect: "error", signal: AbortSignal.timeout(15000),
@@ -42,13 +43,13 @@ export class StripeLivePayoutReader implements PilotPayoutProvider {
         !/^tr_[A-Za-z0-9]+$/.test(transferId) || !/^po_[A-Za-z0-9]+$/.test(payoutId)) throw new Error("Exact payer, recipient, transfer and payout required");
     const payer = await this.get("/v1/account");
     const balance = await this.get("/v1/balance");
-    if (payer.id !== this.payer || balance.object !== "balance" || balance.livemode !== true) throw new Error("Wrong LIVE payer");
+    if (payer.id !== this.payer || balance.object !== "balance" || balance.livemode !== this.live) throw new Error(`Wrong ${this.live ? "LIVE" : "TEST"} payer`);
     const raw = await this.get(`/v1/transfers/${transferId}`);
-    const transfer = parseTransfer(raw, i, transferId);
+    const transfer = parseTransfer(raw, i, transferId, this.live);
     const payment = raw.destination_payment;
     if (typeof payment !== "string" || !/^py_[A-Za-z0-9]+$/.test(payment)) throw new Error("Transfer destination payment unavailable");
     const payout = await this.get(`/v1/payouts/${payoutId}`, i.recipientAccountId);
-    if (payout.object !== "payout" || payout.id !== payoutId || payout.livemode !== true) throw new Error("Wrong recipient payout evidence");
+    if (payout.object !== "payout" || payout.id !== payoutId || payout.livemode !== this.live) throw new Error("Wrong recipient payout evidence");
     if (payout.automatic !== true || payout.method !== "standard" || payout.type !== "bank_account" || payout.currency !== "usd") return { transfer, trace: null };
     if (!Number.isSafeInteger(payout.amount) || (payout.amount as number) < 1 || !["paid","pending","in_transit","failed","canceled"].includes(String(payout.status))) throw new Error("Malformed payout evidence");
     const status = payout.reversed_by ? "reversed" : payout.status as PayoutTrace["status"];
@@ -76,4 +77,11 @@ export class StripeLivePayoutReader implements PilotPayoutProvider {
     validateTrace(trace, i, transferId, payoutId);
     return { transfer, trace };
   }
+}
+
+export class StripeLivePayoutReader extends StripePilotPayoutReader {
+  constructor(key: string | undefined, payer: string | undefined) { super(key, payer, true); }
+}
+export class StripeSandboxPayoutReader extends StripePilotPayoutReader {
+  constructor(key: string | undefined, payer: string) { super(key, payer, false); }
 }

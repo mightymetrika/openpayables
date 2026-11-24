@@ -4,29 +4,36 @@ import type { Pool } from "pg";
 import { createPool } from "../storage/postgres/connection.js";
 import { LivePilotTransferLedger } from "../storage/postgres/live-pilot-transfer.js";
 import { LivePilotPayoutLedger } from "../storage/postgres/live-pilot-payout.js";
-import { StripeLivePilotTransfer } from "../payments/stripe/live-transfer.js";
-import { StripeLivePayoutReader } from "../payments/stripe/live-payout.js";
+import { StripeLivePilotTransfer, StripeSandboxPilotTransfer } from "../payments/stripe/live-transfer.js";
+import { StripeLivePayoutReader, StripeSandboxPayoutReader } from "../payments/stripe/live-payout.js";
 import { parsePilotEvent, type PilotEvent } from "./live-pilot-events.js";
 
 /** Trusted, dedicated operator runtime. No transfer-writing key or command in this server. */
-export async function handlePilotEvent(pool: Pool, payer: string, key: string, event: PilotEvent) {
-  const transfers = new LivePilotTransferLedger(pool);
-  const payouts = new LivePilotPayoutLedger(pool);
-  const result = await pool.query(`SELECT id FROM openpayables.live_pilot_approvals WHERE mode='live' AND platform_account_id=$1 AND
-    ${event.kind === "transfer" ? "id=$2" : "recipient_account_id=$2"}`, [payer,event.kind === "transfer" ? event.approvalId : event.accountId]);
+async function routePilotEvent(pool: Pool, payer: string, key: string, event: PilotEvent, mode: "live" | "pilot_test") {
+  const transfers = new LivePilotTransferLedger(pool, mode);
+  const payouts = new LivePilotPayoutLedger(pool, mode);
+  const result = await pool.query(`SELECT id FROM openpayables.live_pilot_approvals WHERE mode=$3 AND platform_account_id=$1 AND
+    ${event.kind === "transfer" ? "id=$2" : "recipient_account_id=$2"}`, [payer,event.kind === "transfer" ? event.approvalId : event.accountId, mode]);
   if (result.rowCount === 0) return;
   if (result.rowCount !== 1) throw new Error("Ambiguous pilot event routing");
   const id: string = result.rows[0].id;
   const snapshot = await transfers.status(id);
   if (!snapshot.attempt) return; // unrelated or premature event cannot create an attempt
   if (event.kind === "transfer") {
-    await transfers.reconcile(id,event.transferId,new StripeLivePilotTransfer(key,payer));
+    return transfers.reconcile(id,event.transferId,mode === "live" ? new StripeLivePilotTransfer(key,payer) : new StripeSandboxPilotTransfer(key,payer));
   } else {
     if (!snapshot.observation) throw new Error("Transfer observation required; retry or reconcile manually");
     const state = await payouts.status(id);
     if (state.traces.length && state.traces[0]?.payoutId !== event.payoutId) return; // unrelated payout; subsequent payouts require manual review
-    await payouts.reconcile(id,event.payoutId,new StripeLivePayoutReader(key,payer));
+    return payouts.reconcile(id,event.payoutId,mode === "live" ? new StripeLivePayoutReader(key,payer) : new StripeSandboxPayoutReader(key,payer));
   }
+}
+
+export async function handlePilotEvent(pool: Pool, payer: string, key: string, event: PilotEvent) {
+  return routePilotEvent(pool,payer,key,event,"live");
+}
+export async function handleSandboxPilotEvent(pool: Pool, payer: string, key: string, event: PilotEvent) {
+  return routePilotEvent(pool,payer,key,event,"pilot_test");
 }
 
 export async function runLivePilotWebhook() {

@@ -11,7 +11,7 @@ const TRANSACTION = /^txn_[A-Za-z0-9]+$/;
 export interface LiveReadinessSummary {
   platformAccountId: string;
   country: "US";
-  transfersCapability: "active";
+  transfersCapability: "active" | "sandbox_not_required";
   usdAvailableCents: number;
   recipient: null | {
     accountId: string;
@@ -36,17 +36,18 @@ export interface LivePilotEvidence extends LiveReadinessSummary {
 }
 
 /** An intentionally limited subset of the Stripe REST API with GET-only access. */
-export class StripeLiveReadiness {
+class StripePilotReadiness {
   constructor(
-    private readonly key = process.env.OPENPAYABLES_STRIPE_LIVE_READ_KEY,
-    private readonly expectedAccount = process.env.OPENPAYABLES_LIVE_EXPECTED_PLATFORM_ACCOUNT_ID,
-    private readonly confirmation = process.env.OPENPAYABLES_LIVE_READ_ONLY_CONFIRM,
+    private readonly key: string | undefined,
+    private readonly expectedAccount: string | undefined,
+    confirmation: string | undefined,
+    private readonly live: boolean,
   ) {
-    if (confirmation !== "YES_READ_ONLY") {
-      throw new Error("Explicit YES_READ_ONLY confirmation required for LIVE account inspection");
+    if (confirmation !== (live ? "YES_READ_ONLY" : "YES_SANDBOX_ONLY")) {
+      throw new Error(live ? "Explicit YES_READ_ONLY confirmation required for LIVE account inspection" : "Explicit YES_SANDBOX_ONLY confirmation required");
     }
-    if (!key?.startsWith("rk_live_") || key.length <= "rk_live_".length) {
-      throw new Error("A Stripe LIVE restricted read key (rk_live_...) is required");
+    if (!key || !(live ? /^rk_live_.+$/.test(key) : /^(sk|rk)_test_.+$/.test(key))) {
+      throw new Error(live ? "A Stripe LIVE restricted read key (rk_live_...) is required" : "Stripe TEST key required");
     }
     if (!expectedAccount || !ACCOUNT.test(expectedAccount)) {
       throw new Error("Set the expected LIVE platform acct_... ID before inspection");
@@ -58,12 +59,12 @@ export class StripeLiveReadiness {
     const res = await fetch(`${API}${path}`, {
       method: "GET",
       redirect: "error",
-      headers: { Authorization: `Bearer ${this.key}` },
+      headers: { Authorization: `Bearer ${this.key}`, "Stripe-Version": "2026-11-18.endive" },
       signal: AbortSignal.timeout(30000),
     });
     if (!res.ok) {
       // Never print Stripe error bodies: they can include account information.
-      throw new Error(`Stripe LIVE read-only inspection failed (HTTP ${res.status})`);
+      throw new Error(`Stripe ${this.live ? "LIVE" : "TEST"} read-only inspection failed (HTTP ${res.status})`);
     }
     const body: unknown = await res.json();
     if (!body || typeof body !== "object" || Array.isArray(body)) {
@@ -81,21 +82,21 @@ export class StripeLiveReadiness {
     }
     const platform = await this.get("/account");
     if (platform.id !== this.expectedAccount || platform.country !== "US" ||
-        (platform.capabilities as Record<string, unknown> | undefined)?.transfers !== "active") {
-      throw new Error("Wrong LIVE platform, non-US platform, or transfers capability inactive");
+        (this.live && (platform.capabilities as Record<string, unknown> | undefined)?.transfers !== "active")) {
+      throw new Error(this.live ? "Wrong LIVE platform, non-US platform, or transfers capability inactive" : "Wrong TEST platform or non-US platform");
     }
     const requirements = platform.requirements as Record<string, unknown> | undefined;
-    if (!requirements || !Array.isArray(requirements.currently_due) ||
-        !Array.isArray(requirements.past_due)) {
+    if (this.live && (!requirements || !Array.isArray(requirements.currently_due) ||
+        !Array.isArray(requirements.past_due))) {
       throw new Error("LIVE platform requirements were not available for inspection");
     }
-    if (requirements.disabled_reason || requirements.currently_due.length > 0 ||
-        requirements.past_due.length > 0) {
+    if (this.live && requirements && (requirements.disabled_reason || (requirements.currently_due as unknown[]).length > 0 ||
+        (requirements.past_due as unknown[]).length > 0)) {
       throw new Error("LIVE platform has outstanding requirements; inspection refused");
     }
     const balance = await this.get("/balance");
-    if (balance.object !== "balance" || balance.livemode !== true || !Array.isArray(balance.available)) {
-      throw new Error("Stripe response did not prove a LIVE available balance");
+    if (balance.object !== "balance" || balance.livemode !== this.live || !Array.isArray(balance.available)) {
+      throw new Error(`Stripe response did not prove a ${this.live ? "LIVE" : "TEST"} available balance`);
     }
     let available = 0;
     for (const raw of balance.available) {
@@ -131,11 +132,11 @@ export class StripeLiveReadiness {
     let topup: LiveReadinessSummary["topup"] = null;
     if (topupId) {
       const entry = await this.get(`/topups/${topupId}`);
-      if (entry.object !== "topup" || entry.id !== topupId || entry.livemode !== true ||
+      if (entry.object !== "topup" || entry.id !== topupId || entry.livemode !== this.live ||
           entry.status !== "succeeded" || entry.currency !== "usd" ||
           !Number.isSafeInteger(entry.amount) || (entry.amount as number) <= 0 ||
           typeof entry.balance_transaction !== "string" || !TRANSACTION.test(entry.balance_transaction)) {
-        throw new Error("Top-up is not a verified succeeded LIVE USD receipt");
+        throw new Error(`Top-up is not a verified succeeded ${this.live ? "LIVE" : "TEST"} USD receipt`);
       }
       topup = {
         id: topupId, amountCents: entry.amount as number, currency: "usd",
@@ -143,9 +144,9 @@ export class StripeLiveReadiness {
       };
     }
     return {
-      platformAccountId: this.expectedAccount!, country: "US", transfersCapability: "active",
+      platformAccountId: this.expectedAccount!, country: "US", transfersCapability: this.live ? "active" : "sandbox_not_required",
       usdAvailableCents: available, recipient, topup, safeToExecuteTransfer: false,
-      note: "READ ONLY. No project allocation, recipient consent, tax review, balance reservation, or LIVE transfer is authorized by this result.",
+      note: this.live ? "READ ONLY. No project allocation, recipient consent, tax review, balance reservation, or LIVE transfer is authorized by this result." : "TEST ONLY. Sandbox payer capability and KYC are not evidence of LIVE readiness.",
     };
   }
 
@@ -167,4 +168,17 @@ export class StripeLiveReadiness {
     return { ...summary, receiptNetCents: entry.net as number };
   }
 
+}
+
+/** Public LIVE entry point retains the restricted LIVE key and all readiness requirements. */
+export class StripeLiveReadiness extends StripePilotReadiness {
+  constructor(key = process.env.OPENPAYABLES_STRIPE_LIVE_READ_KEY, expectedAccount = process.env.OPENPAYABLES_LIVE_EXPECTED_PLATFORM_ACCOUNT_ID, confirmation = process.env.OPENPAYABLES_LIVE_READ_ONLY_CONFIRM) {
+    super(key, expectedAccount, confirmation, true);
+  }
+}
+/** Separate TEST-only path; no LIVE credentials or responses accepted. */
+export class StripeSandboxReadiness extends StripePilotReadiness {
+  constructor(key: string | undefined, expectedAccount: string, confirmation: string) {
+    super(key, expectedAccount, confirmation, false);
+  }
 }
