@@ -1,3 +1,13 @@
+# 2026-11-23 — First-payout LIVE readiness candidate (UNVALIDATED; NEXT: WINDOWS ACCEPTANCE)
+
+This checkpoint starts from the user-verified clean `development` commit `0e4b150` and published, **unchanged** `v0.2.0-alpha.3` GitHub prerelease. Mightymetrika LLC's LIVE Stripe account is active, Connect platform onboarding and identity verification have been completed, an email says it can create LIVE connected accounts and charges, and the Dashboard shows the Payments balance top-up option; **this is not proof that a real payout is authorized or funded**. We have not moved LIVE money or created a LIVE contributor. BlindStats has implemented the hosted READ-ONLY OpenPayables alpha.3 integration and is out of scope here.
+
+**Candidate scope:** Add `StripeLiveReadiness`, a strictly GET-only Stripe LIVE inspector; a separate `openpayables-live-readiness` CLI and `npm run live:readiness`; a short operator procedure; unit tests for wrong key/platform, LIVE response, recipient and top-up evidence, and GET-only behavior. The candidate version is `0.2.0-alpha.4` **not yet validated, committed, or published**. The TEST finance engine remains unchanged and rejects LIVE keys. No SQL migration, Stripe write endpoint, LIVE funding ledger, transfer, payment reconciliation, new connected account, or bank payout is introduced. This is a narrow prerequisite, **not** the First-Payout Pilot complete. See `docs/FIRST_PAYOUT_LIVE_READINESS.md`.
+
+**Next operator action:** On `development` at `0e4b150` with a clean working tree, apply the reviewed patch ZIP; run `npm run check` and `npm run test:integration` on the dedicated TEST database, then inspect scope. No LIVE API credentials are necessary for acceptance. Keep source changes uncommitted until the user has checked output. After that validation, implement the mode-separated funded LIVE ledger and authorized transfer/reconciliation path; no more generic infrastructure detours.
+
+---
+
 # OpenPayables — Project Handoff
 
 ## Optional Supabase PostgreSQL hosting (HOSTED TEST ACCEPTED 2026-11-22; NEXT: DEVELOPMENT GIT CHECKPOINT)

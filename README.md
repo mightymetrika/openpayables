@@ -272,3 +272,15 @@ For projects funded by verified TEST receipts, approval and send automatically c
 The CLI is a trusted **single-operator local tool**, not an authenticated public API or a multi-tenant hosted service. No Stripe test transfer can be attempted without a Stripe TEST credential, an enabled connected account, an approved and funded distribution period, and explicit operator execution. Financial data is stored in the `openpayables` PostgreSQL schema; no Supabase, Prisma, Clerk or Next.js coupling.
 
 Use `PROJECT_HANDOFF.md` and `docs/GITHUB_INTEGRATION_CLOSEOUT_v0.1.md` for the accepted GitHub milestone and new-chat handoff. See `docs/MVP_SPEC_v0.1.md` for the MVP policy. The first reconciled Stripe TEST transfer has now been demonstrated. With the C11 GitHub App setup and C12 contributor enrollment, review queue and dollar preview accepted in Windows testing, the next practical step is to exercise the complete operator workflow when suitable real GitHub evidence becomes available. A real merged-PR end-to-end acceptance remains to be observed; do not manufacture a pull request merely to satisfy a checkpoint. Stripe eligibility review continues independently. This does not justify a frontend, tax service, automated per-line compensation, or blindstats integration.
+
+
+## First-payout LIVE readiness (alpha.4 candidate; read-only)
+
+A separate, opt-in `npm run live:readiness` check can inspect the operator's
+LIVE Stripe platform identity, available USD balance and (optionally) a named
+recipient or succeeded top-up. It uses a **restricted read-only** `rk_live_`
+key, the exact expected platform account ID, and `YES_READ_ONLY` confirmation.
+It never creates transfers, top-ups, payment obligations or connected accounts,
+and always reports `safeToExecuteTransfer: false`. See
+`docs/FIRST_PAYOUT_LIVE_READINESS.md`. The existing TEST financial commands
+remain TEST-only; LIVE financial execution is **not** available.
