@@ -1,10 +1,20 @@
-# 2026-11-24 — First-payout transfer and reconciliation candidate (WINDOWS ACCEPTANCE PENDING)
+# 2026-11-24 — First-payout signed webhook and payout trace candidate (WINDOWS ACCEPTANCE PENDING)
+
+**Accepted baseline:** `06e4672` on clean synchronized `development`, 167/167 tests in 25 files, lint/build and staged-scope/whitespace checks passed. Version `0.2.0-alpha.4`; published alpha.3 TEST-only preview and BlindStats remain unchanged. Mightymetrika Connect approval and Payments-balance funding option established; actual top-up, recipient and payment not demonstrated.
+
+**Candidate:** Migration 014 records immutable standard automatic bank-payout evidence, using the frozen payer/recipient, transfer destination payment and exact Stripe balance-transaction membership. Provider GET-only reads distinguish gross transfer, recipient net and aggregate payout total. Paid is provider-reported status, not independent proof of bank receipt. Failures and reversals are sticky; a second matched payout requires incident review. Separate signed LIVE platform/connected snapshot webhook endpoints route to authoritative GET-only reconciliation; bounded raw body, separate secrets, timestamp checks, exact account scope and idempotent append-only observations. Dedicated loopback listener; HTTPS ingress, permission configuration and actual webhook delivery are operational acceptance tasks. No LIVE CLI unlock, no hosted database migration, no Stripe requests or actual money movement. See `docs/FIRST_PAYOUT_PAYOUT_RECONCILIATION.md`.
+
+**Next:** Windows acceptance on dedicated local `openpayables_test` only (expected 175 tests / 26 files); then operational Stripe sandbox acceptance, including the actual source+payout API filter, connected-account read permissions, signed event delivery/retries, payout trace, and dedicated LIVE DB/login/HTTPS deployment. Confirm business/legal/tax approvals and recipient identity/consent; independently confirm bank receipt before closing the real pilot. Keep real transfer gate locked until the acceptance/release review. No extra dashboards or BlindStats changes.
+
+---
+
+# 2026-11-24 — First-payout transfer and reconciliation (WINDOWS ACCEPTED; COMMITTED 06e4672)
 
 **Accepted baseline:** `fc646ef` on `development`, clean and synchronized. Package development version `0.2.0-alpha.4`; published `v0.2.0-alpha.3` remains unchanged. 157/157 tests (23 files), ESLint, TypeScript build, exact staged scope and whitespace passed on Windows. Mightymetrika LIVE Connect onboarding and Payments-balance top-up option established; actual funding and real recipient not yet verified. No LIVE money movement.
 
 **Candidate:** Migration 013 adds a single immutable attempt per pilot approval, deterministic Stripe idempotency key, separately attested execution reference, and append-only transfer/reversal observations. The trusted internal execution path rechecks the frozen payer, recipient, USD amount, receipt and balance; requires current v2 recipient transfer capability and a fresh one-use preflight. It inserts and commits the attempt before the one POST. An ambiguous outcome, response mismatch or persistence failure never authorizes a resend. Read-only reconciliation requires exact transfer ID, payer, metadata, transfer group, amount/currency/destination and LIVE mode. Recorded reversals are not erased by stale observations. Provider-mode and DB guards separate synthetic TEST from LIVE. The CLI's LIVE execution release gate is hard-disabled; do not configure write keys or bypass the gate. See `docs/FIRST_PAYOUT_TRANSFER.md`.
 
-**Next:** Validate on dedicated local `openpayables_test` only. Then implement signed LIVE webhook processing and bank-payout tracing, exercise the actual Stripe API contract in a sandbox, and provision the dedicated LIVE operator environment only after release review. No hosted Supabase migration, release, `main`, BlindStats changes, or real transfer at this checkpoint. Actual transfer observation is not bank settlement. The $25 ceiling and one-attempt policy remain pilot restrictions, not general product architecture.
+**Windows acceptance:** 167/167 tests in 25 files, ESLint, TypeScript build, exact 15-file staged scope and Git whitespace checks passed. Committed and pushed `06e4672` on `development`, synchronized and clean. No real payment or hosted migration. See newest entry for next actions.
 
 ---
 

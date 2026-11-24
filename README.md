@@ -1,6 +1,6 @@
 # First-payout development status (2026-11-24)
 
-The accepted development baseline `fc646ef` passed 157 tests, lint and build. This candidate adds a durable one-shot transfer attempt and read-only transfer/reversal reconciliation on top of the isolated approval ledger. **The LIVE execution CLI is hard-disabled pending webhook, sandbox and bank-payout acceptance.** See `docs/FIRST_PAYOUT_TRANSFER.md`. The published alpha.3 TEST-only technical preview is unchanged.
+The accepted development baseline `06e4672` passed 167 tests, lint and build. This candidate adds signed LIVE snapshot webhook routing and read-only trace of a transfer into a standard automatic bank payout. Stripe-reported paid is not independent bank receipt confirmation. **The LIVE execution CLI remains hard-disabled pending operational sandbox and deployment acceptance.** See `docs/FIRST_PAYOUT_PAYOUT_RECONCILIATION.md`. The published alpha.3 TEST-only technical preview is unchanged.
 
 # OpenPayables
 

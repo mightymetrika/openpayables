@@ -18,6 +18,7 @@ const migrations = [
   { version: "011_checkpoint_c13", url: new URL("../../../sql/011_checkpoint_c13.sql", import.meta.url) },
   { version: "012_live_pilot_approval", url: new URL("../../../sql/012_live_pilot_approval.sql", import.meta.url) },
   { version: "013_live_pilot_transfer", url: new URL("../../../sql/013_live_pilot_transfer.sql", import.meta.url) },
+  { version: "014_live_pilot_payout", url: new URL("../../../sql/014_live_pilot_payout.sql", import.meta.url) },
 ];
 
 export async function migrate(pool: Pool): Promise<void> {

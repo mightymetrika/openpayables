@@ -35,7 +35,7 @@ function object(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Malformed Stripe object");
   return value as Record<string, unknown>;
 }
-function parseTransfer(raw: Record<string, unknown>, i: PilotTransferInstruction, expectedId?: string): PilotTransferObservation {
+export function parseTransfer(raw: Record<string, unknown>, i: PilotTransferInstruction, expectedId?: string): PilotTransferObservation {
   if (raw.object !== "transfer" || raw.livemode !== true || typeof raw.id !== "string" || !transfer.test(raw.id) ||
       (expectedId !== undefined && raw.id !== expectedId) || raw.destination !== i.recipientAccountId || raw.currency !== "usd" ||
       raw.amount !== i.amountCents || raw.transfer_group !== pilotIdempotencyKey(i.approvalId) ||

@@ -44,7 +44,7 @@ The migrations create normal tables, triggers, constraints, and a PL/pgSQL funct
 
 ## Step 3 — provision two restricted SQL logins
 
-Run the tracked `sql/deployment/supabase_roles.sql` using `psql -X -f` as **the Supabase database administrator**, in the same dedicated project. This is a separate *deployment setup script*, **not** a numbered OpenPayables schema migration. The script fails if either role already exists or the current 13 migrations are absent; inspect rather than rerun it on partial success.
+Run the tracked `sql/deployment/supabase_roles.sql` using `psql -X -f` as **the Supabase database administrator**, in the same dedicated project. This is a separate *deployment setup script*, **not** a numbered OpenPayables schema migration. The script fails if either role already exists or the current 14 migrations are absent; inspect rather than rerun it on partial success.
 
 - `openpayables_operator`: trusted operator runtime with SELECT, INSERT and UPDATE on OpenPayables tables, but no DELETE, schema CREATE, role management, or schema migration ledger edits. Keep these credentials out of BlindStats.
 - `openpayables_app_ro`: project-operator's application read-only login with only the 15 explicitly required relations/columns, a default read-only transaction, and no funding table access or schema CREATE. This is the **only** database login BlindStats should receive.

@@ -72,7 +72,7 @@ export class LivePilotTransferLedger {
     try { return await this.record(i, await provider.sendOnce(i)); }
     catch { throw new Error("Transfer outcome unknown; never resend. Reconcile using the exact Stripe transfer ID or inspect Workbench"); }
   }
-  async reconcile(id: string, transferId: string, provider: PilotTransferProvider) {
+  async reconcile(id: string, transferId: string, provider: Pick<PilotTransferProvider, "mode" | "retrieve">) {
     const { instruction } = await this.approval(id);
     if (provider.mode !== this.mode) throw new Error("Pilot provider mode mismatch");
     if (!/^tr_[A-Za-z0-9]+$/.test(transferId)) throw new Error("Exact Stripe transfer ID required");

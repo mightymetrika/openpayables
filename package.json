@@ -20,7 +20,9 @@
     "prepack": "npm run build",
     "live:readiness": "tsx src/cli/live-readiness.ts",
     "live:pilot": "tsx src/cli/live-pilot.ts",
-    "live:transfer": "tsx src/cli/live-pilot-transfer.ts"
+    "live:transfer": "tsx src/cli/live-pilot-transfer.ts",
+    "live:payout": "tsx src/cli/live-pilot-payout.ts",
+    "webhook:live-pilot": "tsx src/server/live-pilot-webhook.ts"
   },
   "dependencies": {
     "pg": "^8.13.1"
