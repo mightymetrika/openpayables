@@ -12,7 +12,7 @@ import { LivePilotPayoutLedger } from "../storage/postgres/live-pilot-payout.js"
 import { StripeSandboxReadiness } from "../payments/stripe/live-readiness.js";
 import { StripeSandboxPilotTransfer } from "../payments/stripe/live-transfer.js";
 import { StripeSandboxPayoutReader } from "../payments/stripe/live-payout.js";
-import { parseSandboxPilotEvent } from "../server/live-pilot-events.js";
+import { handleSandboxWebhook, sandboxWebhookBodyLimit } from "../server/sandbox-webhook.js";
 import { handleSandboxPilotEvent } from "../server/live-pilot-webhook.js";
 
 const cents = 500;
@@ -67,26 +67,21 @@ async function main(args: string[]) {
       const server = createServer(async (req,res) => {
         const scope = req.url === "/stripe/sandbox/platform" ? "platform" : req.url === "/stripe/sandbox/connected" ? "connected" : null;
         if (req.method !== "POST" || !scope) { res.writeHead(404).end(); return; }
-        let event;
+        const chunks: Buffer[] = [];
+        let length = 0;
         try {
-          const chunks: Buffer[] = [];
-          let length = 0;
           for await (const part of req) {
             const chunk = Buffer.from(part); length += chunk.length;
-            if (length > 1024*1024) { res.writeHead(413).end(); return; }
+            if (length > sandboxWebhookBodyLimit) { res.writeHead(413).end(); return; }
             chunks.push(chunk);
           }
-          const sig = req.headers["stripe-signature"];
-          if (typeof sig !== "string") throw new Error("Missing signature");
-          event = parseSandboxPilotEvent(Buffer.concat(chunks),sig,secret,scope);
         } catch { res.writeHead(400).end("Invalid TEST event"); return; }
-        try {
-          if (event) {
-            const result = await handleSandboxPilotEvent(pool,payer,key,event);
-            console.log(`SIGNED TEST ${scope} ${event.id}: ${result ? "reconciled" : "no matching pilot"}`);
-          }
-          res.writeHead(200).end("OK");
-        } catch { console.error("TEST event processing failed; reconcile manually"); res.writeHead(503).end("Retry later"); }
+        const sig = req.headers["stripe-signature"];
+        const result = await handleSandboxWebhook(Buffer.concat(chunks), typeof sig === "string" ? sig : null, {
+          scope, secret, reconcile: async (event) => Boolean(await handleSandboxPilotEvent(pool,payer,key,event)),
+          log: (message) => console.log(message),
+        });
+        res.writeHead(result.status).end(result.body);
       });
       server.requestTimeout = 30000;
       await new Promise<void>((resolve,reject)=>{ server.once("error",reject); server.listen(8789,"127.0.0.1",resolve); });

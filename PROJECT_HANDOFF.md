@@ -1,3 +1,23 @@
+# 2026-11-26 — Hosted TEST webhook adapter local validation (deployment still OPEN)
+
+**Verified local checks:** Candidate applied on `13f4c4f` (recovered connected payout events documentation; source baseline `bad6c19`). Operator output reports 28/28 test files, 190/190 tests (including all nine new adapter tests), ESLint, package TypeScript build and Vercel route type checking passed. Exact 14-file staged scope and whitespace check passed. Node 24-or-newer prerequisite passed. Existing 14 migrations and runtime dependencies unchanged. No hosted resources or money movement.
+
+**Commit gate:** The first validation run deferred the local sandbox ledger recheck because the TEST key was not loaded. Apply this handoff update and commit the candidate only after the supplied status-only acceptance block confirms the exact original approval, durable attempt, unreversed transfer and one paid payout trace, with `stripe_reported_paid` and `bankPayoutVerified=false`. No new approval, transfer, payout or ledger reset. Record the resulting clean synchronized development commit when reported.
+
+**Next:** Provision an isolated hosted TEST PostgreSQL database and least-privilege webhook login; review and implement selective historical pilot import (no new execution), then create a dedicated TEST Vercel reference deployment and attempt genuine Stripe-signed connected event delivery and duplicate acceptance. Existing alpha.3 hosted development, published package, main, BlindStats and RandomPlayables untouched. LIVE execution locked; no hosted acceptance or provider delivery claimed. See `docs/HOSTED_SANDBOX_WEBHOOK.md`.
+
+---
+
+# 2026-11-26 — TEST webhook reference deployment candidate (LOCAL VALIDATION PENDING)
+
+**Baseline:** `bad6c19` financial closeout plus the recovered connected-event handoff below (included in this patch if the earlier handoff-only patch was not yet applied). Existing source `091f799`, prior 181/181 tests and 14 migrations. Architecture decision: keep OpenPayables hosting-independent; support integrated application routes, standalone serverless/hosted reference and on-demand CLI. Do not purchase a VPS merely to receive webhooks. RandomPayables used the integrated Next.js/Vercel pattern; do not copy its payment semantics.
+
+**Candidate:** shared TEST signature/dispatch handler used by local CLI and standard Web Request/Response adapter; server-only package export `openpayables/server`; Vercel TEST-only platform and connected functions, separate secrets and restricted TEST key, exact pilot identity, bounded TLS-verifying PostgreSQL connections and hosted database privilege guard. Existing LIVE entry points and guards unchanged. No schema migration, new runtime dependencies, payment execution route, hosted resource, or money movement. `docs/HOSTED_SANDBOX_WEBHOOK.md` documents the reference and acceptance. Direct Node 22 transport smoke passed with synthetic signed fixtures (not provider delivery); full dependency-based checks unavailable in the authoring environment. Candidate requires local `npm run check` on Node 24 and deployment verification; no hosted acceptance claimed. Prior alpha.3, main, BlindStats and RandomPlayables unchanged.
+
+**Next:** After local validation and clean synchronized commit, provision an isolated hosted PostgreSQL database named `openpayables_test` with dedicated non-admin login `openpayables_test_webhook` and limited append-only observation grants. Implement reviewed selective import of the original synthetic approval/attempt/transfer with exact historical identity; never reset the existing local ledger or create a new payment. Configure a separate TEST Vercel project with restricted TEST Stripe read key and endpoint-specific secrets. Check real Stripe event redelivery availability, verify actual signed connected `payout.paid` event `evt_1UfUDUA9lZlrd52M3kxz8NWN` and exact payout trace, then duplicate-delivery safety. LIVE locked; actual signed connected delivery and remaining pre-LIVE gates still outstanding.
+
+---
+
 # 2026-11-26 — Genuine connected-account sandbox payout events recovered (delivery still OPEN)
 
 **Accepted starting checkpoint:** `bad6c19`, clean synchronized development. Source `091f799`; 181/181 tests, lint/build, 14 local migrations previously passed. Sandbox financial lifecycle and offline payout recovery accepted; LIVE execution locked. No changes to source, schema, hosted databases, published alpha.3, main or BlindStats.

@@ -1,0 +1,10 @@
+{
+  "framework": null,
+  "buildCommand": "npm run build",
+  "functions": {
+    "api/stripe-sandbox-*.ts": {
+      "maxDuration": 120
+    }
+  },
+  "outputDirectory": "public"
+}
