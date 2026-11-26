@@ -1,3 +1,18 @@
+# 2026-11-26 — Genuine connected-account sandbox payout events recovered (delivery still OPEN)
+
+**Accepted starting checkpoint:** `bad6c19`, clean synchronized development. Source `091f799`; 181/181 tests, lint/build, 14 local migrations previously passed. Sandbox financial lifecycle and offline payout recovery accepted; LIVE execution locked. No changes to source, schema, hosted databases, published alpha.3, main or BlindStats.
+
+**Read-only Stripe evidence:** Exact OpenPayables Development TEST payer `acct_1Ucqb8PGvHvd36JR` verified via account and balance GETs. Platform-scoped event queries returned no matches; recipient-scoped (`Stripe-Account: acct_1Ucr1LA9lZlrd52M`) event queries returned exactly one each for the original payout `po_1UfU8dA9lZlrd52M6JtVAaAc`. All four events had the exact connected-account ID, `livemode=false`, API version `2026-10-28.endive`, and reconciliation status `completed`:
+
+- `payout.created`: `evt_1UfU8eA9lZlrd52MH9gm0rqd`, in_transit.
+- `payout.reconciliation_completed`: `evt_1UfU8eA9lZlrd52MqCy9wjGe`, in_transit.
+- `payout.updated`: `evt_1UfUDUA9lZlrd52M7yU3gzxe`, paid.
+- `payout.paid`: `evt_1UfUDUA9lZlrd52M3kxz8NWN`, paid (preferred redelivery candidate).
+
+**Next action:** Provision an operator-owned isolated TEST HTTPS runtime before any LIVE deployment. Hosting vendor, budget and hostname not yet approved; a small Linux VPS with private PostgreSQL, non-root service, restricted TEST read credentials and TLS reverse proxy is a candidate. Do not expose the existing loopback-only sandbox runner; prepare a bounded dedicated hosted reconciliation listener with no payment execution route, distinct registered endpoint signing secret, restricted DB privileges, and verified synthetic acceptance ledger (preserve exact approval, attempt, transfer and payout evidence). Do not copy unrelated database contents or credentials. Confirm Stripe permits historical connected-account event redelivery to the newly registered TEST endpoint before attempting; manual redelivery is not guaranteed for a newly created destination. Verify exact provider-signed event, HTTP 2xx and unchanged single paid payout trace/attempt; test duplicate delivery and wrong-scope/mode/signature rejection. Historical Events API retrieval alone is not signed delivery. No new transfer or payout, no real funds, no LIVE credentials or execution unlock. Keep deployment work in OpenPayables only. Update handoff after accepted infrastructure steps.
+
+---
+
 # 2026-11-25 — Sandbox financial lifecycle ACCEPTED; connected delivery gate remains OPEN
 
 **Baseline:** `d339e5f` (local and origin/development synchronized, clean tree), source `091f799`, development package `0.2.0-alpha.4`. Previously validated 181/181 tests in 27 files, ESLint and TypeScript build; 14 local migrations. No source or schema change in this closeout. Published alpha.3, main, hosted databases and BlindStats remain unchanged.
